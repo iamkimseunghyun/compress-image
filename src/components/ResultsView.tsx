@@ -2,6 +2,7 @@ import type { ProcessingResult } from '../types'
 
 interface ResultsViewProps {
   results: ProcessingResult[]
+  elapsedMs: number
   onReset: () => void
 }
 
@@ -11,11 +12,23 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  const totalSeconds = ms / 1000
+  // Below the 60s rounding boundary, show one decimal (e.g. 12.3초).
+  if (totalSeconds < 59.95) return `${totalSeconds.toFixed(1)}초`
+  // Round to whole seconds first so we never produce "1분 60초".
+  const roundedSeconds = Math.round(totalSeconds)
+  const minutes = Math.floor(roundedSeconds / 60)
+  const seconds = roundedSeconds % 60
+  return `${minutes}분 ${seconds}초`
+}
+
 function basename(filePath: string): string {
   return filePath.split(/[/\\]/).pop() ?? filePath
 }
 
-export function ResultsView({ results, onReset }: ResultsViewProps) {
+export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
   const succeeded = results.filter((r) => r.success)
   const failed = results.filter((r) => !r.success)
   const totalOriginal = succeeded.reduce((sum, r) => sum + r.originalSize, 0)
@@ -51,6 +64,12 @@ export function ResultsView({ results, onReset }: ResultsViewProps) {
             <span className="stat-value">{savedPercent}%</span>
             <span className="stat-label">절감</span>
           </div>
+          {elapsedMs > 0 && (
+            <div className="stat">
+              <span className="stat-value">{formatDuration(elapsedMs)}</span>
+              <span className="stat-label">소요 시간</span>
+            </div>
+          )}
         </div>
       </div>
 

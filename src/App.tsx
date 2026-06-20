@@ -12,6 +12,7 @@ export default function App() {
   const [state, setState] = useState<AppState>('idle')
   const [progress, setProgress] = useState<ProcessingProgress>({ current: 0, total: 0, currentFile: '' })
   const [results, setResults] = useState<ProcessingResult[]>([])
+  const [elapsedMs, setElapsedMs] = useState(0)
 
   const [resize, setResize] = useState<ResizeOptions>({
     mode: 'percentage',
@@ -96,7 +97,9 @@ export default function App() {
 
     try {
       const filePaths = files.map((f) => f.path)
+      const start = performance.now()
       const processResults = await window.api.processImages(filePaths, resize, output)
+      setElapsedMs(performance.now() - start)
       setResults(processResults)
       setState('done')
     } catch (err) {
@@ -123,7 +126,7 @@ export default function App() {
 
       <main className="app-main">
         {state === 'done' ? (
-          <ResultsView results={results} onReset={handleReset} />
+          <ResultsView results={results} elapsedMs={elapsedMs} onReset={handleReset} />
         ) : (
           <>
             <div className="panel-left">

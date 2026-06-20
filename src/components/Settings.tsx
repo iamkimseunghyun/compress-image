@@ -27,6 +27,11 @@ const FORMAT_OPTIONS: { value: OutputOptions['format']; label: string }[] = [
 ]
 
 export function Settings({ resize, output, onResizeChange, onOutputChange, onSelectOutputDir }: SettingsProps) {
+  const renaming = (output.filenameBase ?? '').trim() !== ''
+  const filenamePreview = renaming
+    ? `${(output.filenameBase ?? '').trim()}_${'1'.padStart(Math.max(1, output.numberPadding ?? 3), '0')}.jpg`
+    : `${output.filenamePrefix ?? ''}example${output.filenameSuffix ?? ''}.jpg`
+
   return (
     <div className="settings">
       {/* ── Resize ── */}
@@ -127,11 +132,37 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
+          <label>새 파일명 (이름 바꾸기)</label>
+          <input
+            type="text"
+            placeholder="비워두면 원본 이름 유지"
+            value={output.filenameBase ?? ''}
+            onChange={(e) => onOutputChange({ ...output, filenameBase: e.target.value })}
+          />
+        </div>
+
+        {renaming && (
+          <div className="setting-row">
+            <label>번호 자릿수</label>
+            <input
+              type="number"
+              min={1}
+              max={6}
+              value={output.numberPadding ?? 3}
+              onChange={(e) =>
+                onOutputChange({ ...output, numberPadding: Math.max(1, Number(e.target.value) || 1) })
+              }
+            />
+          </div>
+        )}
+
+        <div className="setting-row">
           <label>파일명 접두사</label>
           <input
             type="text"
             placeholder="예: resized_"
             value={output.filenamePrefix}
+            disabled={renaming}
             onChange={(e) => onOutputChange({ ...output, filenamePrefix: e.target.value })}
           />
         </div>
@@ -142,13 +173,14 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
             type="text"
             placeholder="예: _compressed"
             value={output.filenameSuffix}
+            disabled={renaming}
             onChange={(e) => onOutputChange({ ...output, filenameSuffix: e.target.value })}
           />
         </div>
 
         <div className="filename-preview">
           <span className="preview-label">미리보기:</span>
-          <code>{output.filenamePrefix}example{output.filenameSuffix}.jpg</code>
+          <code>{filenamePreview}</code>
         </div>
 
         <div className="setting-row">

@@ -39,7 +39,7 @@ export async function processImages(
     onProgress({ current: i, total: files.length, currentFile: path.basename(filePath) })
 
     try {
-      const result = await processSingleImage(filePath, resize, output)
+      const result = await processSingleImage(filePath, resize, output, i)
       results.push(result)
     } catch (err) {
       results.push({
@@ -63,6 +63,7 @@ async function processSingleImage(
   filePath: string,
   resize: ResizeOptions,
   output: OutputOptions,
+  index: number,
 ): Promise<ProcessingResult> {
   const originalStats = fs.statSync(filePath)
   let pipeline = sharp(filePath, { animated: true })
@@ -90,10 +91,8 @@ async function processSingleImage(
 
   // ── Output Path ──
   const ext = getExtension(targetFormat)
-  const basename = path.basename(filePath, path.extname(filePath))
-  const prefix = output.filenamePrefix ?? ''
-  const suffix = output.filenameSuffix ?? '_compressed'
-  const outputPath = path.join(output.outputDir, `${prefix}${basename}${suffix}.${ext}`)
+  const outputName = buildOutputName(filePath, output, index)
+  const outputPath = path.join(output.outputDir, `${outputName}.${ext}`)
 
   // Ensure output directory exists
   fs.mkdirSync(output.outputDir, { recursive: true })
@@ -109,6 +108,23 @@ async function processSingleImage(
     height: result.height,
     success: true,
   }
+}
+
+function buildOutputName(filePath: string, output: OutputOptions, index: number): string {
+  const base = (output.filenameBase ?? '').trim()
+
+  // Full-rename mode: `{base}_{number}` with zero-padding. Prefix/suffix are ignored.
+  if (base !== '') {
+    const padding = output.numberPadding > 0 ? output.numberPadding : 3
+    const number = String(index + 1).padStart(padding, '0')
+    return `${base}_${number}`
+  }
+
+  // Default mode: keep original name, decorate with prefix/suffix.
+  const original = path.basename(filePath, path.extname(filePath))
+  const prefix = output.filenamePrefix ?? ''
+  const suffix = output.filenameSuffix ?? '_compressed'
+  return `${prefix}${original}${suffix}`
 }
 
 function getExtension(format: string): string {

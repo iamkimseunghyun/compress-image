@@ -25,6 +25,8 @@ export default function App() {
     format: 'original',
     quality: 80,
     outputDir: '',
+    filenameBase: '',
+    numberPadding: 3,
     filenamePrefix: '',
     filenameSuffix: '_compressed',
   })

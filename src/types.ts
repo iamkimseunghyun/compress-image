@@ -19,6 +19,10 @@ export interface OutputOptions {
   format: 'original' | 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'gif'
   quality: number
   outputDir: string
+  /** When set, fully renames output to `{filenameBase}_{number}` (prefix/suffix ignored). Empty = keep original name. */
+  filenameBase: string
+  /** Zero-pad width for the sequence number used with filenameBase (e.g. 3 → 001). */
+  numberPadding: number
   filenamePrefix: string
   filenameSuffix: string
 }

@@ -27,10 +27,10 @@ const FORMAT_OPTIONS: { value: OutputOptions['format']; label: string }[] = [
 ]
 
 export function Settings({ resize, output, onResizeChange, onOutputChange, onSelectOutputDir }: SettingsProps) {
-  const renaming = output.filenameBase.trim() !== ''
+  const renaming = (output.filenameBase ?? '').trim() !== ''
   const filenamePreview = renaming
-    ? `${output.filenameBase.trim()}_${'1'.padStart(Math.max(1, output.numberPadding), '0')}.jpg`
-    : `${output.filenamePrefix}example${output.filenameSuffix}.jpg`
+    ? `${(output.filenameBase ?? '').trim()}_${'1'.padStart(Math.max(1, output.numberPadding ?? 3), '0')}.jpg`
+    : `${output.filenamePrefix ?? ''}example${output.filenameSuffix ?? ''}.jpg`
 
   return (
     <div className="settings">
@@ -136,7 +136,7 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
           <input
             type="text"
             placeholder="비워두면 원본 이름 유지"
-            value={output.filenameBase}
+            value={output.filenameBase ?? ''}
             onChange={(e) => onOutputChange({ ...output, filenameBase: e.target.value })}
           />
         </div>
@@ -148,7 +148,7 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
               type="number"
               min={1}
               max={6}
-              value={output.numberPadding}
+              value={output.numberPadding ?? 3}
               onChange={(e) =>
                 onOutputChange({ ...output, numberPadding: Math.max(1, Number(e.target.value) || 1) })
               }

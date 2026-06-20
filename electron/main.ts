@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
+import fs from 'node:fs'
 import { processImages, getImageInfo } from './imageProcessor'
 
 process.env.DIST = path.join(__dirname, '../dist')
@@ -35,7 +36,15 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  // Show the app icon in the Dock during `npm run dev` (packaged builds get it
+  // from electron-builder). __dirname is dist-electron/ in dev.
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    const devIcon = path.join(__dirname, '../build/icon.png')
+    if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon)
+  }
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

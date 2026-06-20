@@ -45,9 +45,14 @@ export async function processImages(
   // Preserve input order in results; each file keeps its original index so the
   // rename auto-numbering stays deterministic regardless of completion order.
   const results: ProcessingResult[] = new Array(files.length)
-  const concurrency = Math.max(1, Math.min(files.length, os.cpus().length, MAX_CONCURRENCY))
+  // os.cpus() can return an empty array in some restricted environments.
+  const cpuCount = os.cpus()?.length || 1
+  const concurrency = Math.max(1, Math.min(files.length, cpuCount, MAX_CONCURRENCY))
   let nextIndex = 0
   let completed = 0
+  // Throttle progress so concurrent completions don't flood the IPC channel.
+  let lastProgressAt = 0
+  const PROGRESS_THROTTLE_MS = 100
 
   onProgress({ current: 0, total: files.length, currentFile: '' })
 
@@ -72,7 +77,11 @@ export async function processImages(
         }
       }
       completed++
-      onProgress({ current: completed, total: files.length, currentFile: path.basename(filePath) })
+      const now = Date.now()
+      if (completed === files.length || now - lastProgressAt >= PROGRESS_THROTTLE_MS) {
+        lastProgressAt = now
+        onProgress({ current: completed, total: files.length, currentFile: path.basename(filePath) })
+      }
     }
   }
 

@@ -12,7 +12,8 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            rollupOptions: {
+            // Vite 8 uses Rolldown; sharp is a native module and must stay external.
+            rolldownOptions: {
               external: ['sharp'],
             },
           },

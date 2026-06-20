@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import path from 'node:path'
 import fs from 'node:fs'
+import os from 'node:os'
 import type { ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress, ImageFileInfo } from '../src/types'
 
 const FORMAT_OPTIONS: Record<string, object> = {
@@ -11,6 +12,15 @@ const FORMAT_OPTIONS: Record<string, object> = {
   tiff: {},
   gif: {},
 }
+
+// Formats Sharp can encode. Sources outside this set (e.g. svg, heif) can be
+// read but not always re-encoded, so 'original' falls back to png for them.
+const WRITABLE_FORMATS = new Set(['jpeg', 'png', 'webp', 'avif', 'tiff', 'gif'])
+
+// Cap parallelism so very large batches don't spike memory while still using
+// multiple cores. libvips parallelizes each op internally; this adds file-level
+// concurrency on top.
+const MAX_CONCURRENCY = 8
 
 export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
   const metadata = await sharp(filePath).metadata()
@@ -32,28 +42,50 @@ export async function processImages(
   output: OutputOptions,
   onProgress: (progress: ProcessingProgress) => void,
 ): Promise<ProcessingResult[]> {
-  const results: ProcessingResult[] = []
+  // Preserve input order in results; each file keeps its original index so the
+  // rename auto-numbering stays deterministic regardless of completion order.
+  const results: ProcessingResult[] = new Array(files.length)
+  // os.cpus() can return an empty array in some restricted environments.
+  const cpuCount = os.cpus()?.length || 1
+  const concurrency = Math.max(1, Math.min(files.length, cpuCount, MAX_CONCURRENCY))
+  let nextIndex = 0
+  let completed = 0
+  // Throttle progress so concurrent completions don't flood the IPC channel.
+  let lastProgressAt = 0
+  const PROGRESS_THROTTLE_MS = 100
 
-  for (let i = 0; i < files.length; i++) {
-    const filePath = files[i]
-    onProgress({ current: i, total: files.length, currentFile: path.basename(filePath) })
+  onProgress({ current: 0, total: files.length, currentFile: '' })
 
-    try {
-      const result = await processSingleImage(filePath, resize, output, i)
-      results.push(result)
-    } catch (err) {
-      results.push({
-        inputPath: filePath,
-        outputPath: '',
-        originalSize: 0,
-        processedSize: 0,
-        width: 0,
-        height: 0,
-        success: false,
-        error: err instanceof Error ? err.message : String(err),
-      })
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = nextIndex++
+      if (i >= files.length) return
+
+      const filePath = files[i]
+      try {
+        results[i] = await processSingleImage(filePath, resize, output, i)
+      } catch (err) {
+        results[i] = {
+          inputPath: filePath,
+          outputPath: '',
+          originalSize: 0,
+          processedSize: 0,
+          width: 0,
+          height: 0,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+      completed++
+      const now = Date.now()
+      if (completed === files.length || now - lastProgressAt >= PROGRESS_THROTTLE_MS) {
+        lastProgressAt = now
+        onProgress({ current: completed, total: files.length, currentFile: path.basename(filePath) })
+      }
     }
   }
+
+  await Promise.all(Array.from({ length: concurrency }, worker))
 
   onProgress({ current: files.length, total: files.length, currentFile: '' })
   return results
@@ -84,7 +116,8 @@ async function processSingleImage(
 
   // ── Format & Quality ──
   const sourceFormat = metadata.format ?? 'jpeg'
-  const targetFormat = output.format === 'original' ? sourceFormat : output.format
+  const requestedFormat = output.format === 'original' ? sourceFormat : output.format
+  const targetFormat = WRITABLE_FORMATS.has(requestedFormat) ? requestedFormat : 'png'
   const formatOpts = { ...FORMAT_OPTIONS[targetFormat], quality: output.quality }
 
   pipeline = pipeline.toFormat(targetFormat as keyof sharp.FormatEnum, formatOpts)

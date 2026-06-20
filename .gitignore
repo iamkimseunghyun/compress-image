@@ -4,8 +4,10 @@ node_modules/
 # Build output
 dist/
 dist-electron/
+dist-types/
 release/
 out/
+*.tsbuildinfo
 
 # Logs
 *.log

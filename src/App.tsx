@@ -52,7 +52,11 @@ export default function App() {
 
   const addFilesByPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
-    const infos = await Promise.all(paths.map((p) => window.api.getImageInfo(p)))
+    // Skip files that fail to read (corrupt/unsupported) instead of aborting the whole batch.
+    const settled = await Promise.allSettled(paths.map((p) => window.api.getImageInfo(p)))
+    const infos = settled
+      .filter((r): r is PromiseFulfilledResult<ImageFileInfo> => r.status === 'fulfilled')
+      .map((r) => r.value)
     setFiles((prev) => {
       const existingPaths = new Set(prev.map((f) => f.path))
       const newFiles = infos.filter((f) => !existingPaths.has(f.path))
@@ -90,11 +94,17 @@ export default function App() {
     setState('processing')
     setResults([])
 
-    const filePaths = files.map((f) => f.path)
-    const processResults = await window.api.processImages(filePaths, resize, output)
-
-    setResults(processResults)
-    setState('done')
+    try {
+      const filePaths = files.map((f) => f.path)
+      const processResults = await window.api.processImages(filePaths, resize, output)
+      setResults(processResults)
+      setState('done')
+    } catch (err) {
+      // Unexpected IPC/processing failure — surface it and return to idle instead of hanging.
+      console.error('Image processing failed:', err)
+      alert(`이미지 처리 중 오류가 발생했습니다.\n${err instanceof Error ? err.message : String(err)}`)
+      setState('idle')
+    }
   }, [files, resize, output])
 
   const handleReset = useCallback(() => {

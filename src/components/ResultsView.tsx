@@ -56,7 +56,7 @@ export function ResultsView({ results, onReset }: ResultsViewProps) {
 
       <ul className="results-list">
         {results.map((r, i) => (
-          <li key={i} className={`result-item ${r.success ? '' : 'result-error'}`}>
+          <li key={`${r.inputPath}-${i}`} className={`result-item ${r.success ? '' : 'result-error'}`}>
             <span className="result-name">{basename(r.inputPath)}</span>
             {r.success ? (
               <span className="result-meta">

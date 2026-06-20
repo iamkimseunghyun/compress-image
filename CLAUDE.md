@@ -10,9 +10,12 @@ Electron desktop app for batch image resizing and compression. Uses Sharp (libvi
 
 ```bash
 npm run dev       # Start Vite dev server + Electron (hot reload)
-npm run build     # TypeScript check + Vite production build
+npm run typecheck # tsc --noEmit for both renderer (tsconfig.json) and electron/vite (tsconfig.node.json)
+npm run build     # typecheck + Vite production build (renderer + main + preload)
 npm run package   # Build + create platform installer (electron-builder)
 ```
+
+App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`) and are wired into electron-builder per platform.
 
 ## Architecture
 

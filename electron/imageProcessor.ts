@@ -17,6 +17,7 @@ const FORMAT_OPTIONS: Record<string, object> = {
 // read but not always re-encoded, so 'original' falls back to png for them.
 type WritableFormat = 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'gif'
 const WRITABLE_FORMATS = new Set<string>(['jpeg', 'png', 'webp', 'avif', 'tiff', 'gif'])
+const isWritableFormat = (format: string): format is WritableFormat => WRITABLE_FORMATS.has(format)
 
 // Cap parallelism so very large batches don't spike memory while still using
 // multiple cores. libvips parallelizes each op internally; this adds file-level
@@ -118,9 +119,7 @@ async function processSingleImage(
   // ── Format & Quality ──
   const sourceFormat = metadata.format ?? 'jpeg'
   const requestedFormat = output.format === 'original' ? sourceFormat : output.format
-  const targetFormat: WritableFormat = WRITABLE_FORMATS.has(requestedFormat)
-    ? (requestedFormat as WritableFormat)
-    : 'png'
+  const targetFormat: WritableFormat = isWritableFormat(requestedFormat) ? requestedFormat : 'png'
   const formatOpts = { ...FORMAT_OPTIONS[targetFormat], quality: output.quality }
 
   pipeline = pipeline.toFormat(targetFormat, formatOpts)

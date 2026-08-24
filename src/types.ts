@@ -18,6 +18,12 @@ export interface ResizeOptions {
 export interface OutputOptions {
   format: 'original' | 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'gif'
   quality: number
+  /**
+   * Encoder effort. 'max' squeezes files smallest (mozjpeg, high effort levels);
+   * 'fast' trades ~15-40% larger output for a several-fold speedup. Defaults to
+   * 'max' when absent so existing callers keep their current output.
+   */
+  compression: 'max' | 'fast'
   outputDir: string
   /** When set, fully renames output to `{filenameBase}_{number}` (prefix/suffix ignored). Empty = keep original name. */
   filenameBase: string

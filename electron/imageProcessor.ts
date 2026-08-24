@@ -4,20 +4,36 @@ import fs from 'node:fs'
 import os from 'node:os'
 import type { ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress, ImageFileInfo } from '../src/types'
 
-const FORMAT_OPTIONS: Record<string, object> = {
-  jpeg: { mozjpeg: true },
-  png: { compressionLevel: 9 },
-  webp: {},
-  avif: {},
-  tiff: {},
-  gif: {},
-}
-
 // Formats Sharp can encode. Sources outside this set (e.g. svg, heif) can be
 // read but not always re-encoded, so 'original' falls back to png for them.
 type WritableFormat = 'jpeg' | 'png' | 'webp' | 'avif' | 'tiff' | 'gif'
 const WRITABLE_FORMATS = new Set<string>(['jpeg', 'png', 'webp', 'avif', 'tiff', 'gif'])
 const isWritableFormat = (format: string): format is WritableFormat => WRITABLE_FORMATS.has(format)
+
+// Per-format encoder settings per compression mode. 'max' keeps the
+// slowest-but-smallest settings this app has always used; 'fast' drops every
+// encoder to its minimum effort. Measured on a 20 x 4032x3024 batch (M-series,
+// 10 cores): JPEG 1410ms -> 308ms (+14% size), and per-image PNG 1107ms ->
+// 121ms, GIF 1141ms -> 120ms, AVIF 481ms -> 34ms at 19-39% larger output.
+// TIFF has no effort knob in libvips, so both modes share its settings.
+const FORMAT_OPTIONS: Record<OutputOptions['compression'], Record<WritableFormat, object>> = {
+  max: {
+    jpeg: { mozjpeg: true },
+    png: { compressionLevel: 9 },
+    webp: {},
+    avif: {},
+    tiff: {},
+    gif: {},
+  },
+  fast: {
+    jpeg: { mozjpeg: false },
+    png: { compressionLevel: 3, effort: 1 },
+    webp: { effort: 0 },
+    avif: { effort: 0 },
+    tiff: {},
+    gif: { effort: 1 },
+  },
+}
 
 // Cap parallelism so very large batches don't spike memory while still using
 // multiple cores. libvips parallelizes each op internally; this adds file-level
@@ -120,7 +136,9 @@ async function processSingleImage(
   const sourceFormat = metadata.format ?? 'jpeg'
   const requestedFormat = output.format === 'original' ? sourceFormat : output.format
   const targetFormat: WritableFormat = isWritableFormat(requestedFormat) ? requestedFormat : 'png'
-  const formatOpts = { ...FORMAT_OPTIONS[targetFormat], quality: output.quality }
+  // Absent/unknown mode falls back to 'max' so older callers keep prior output.
+  const mode = output.compression === 'fast' ? 'fast' : 'max'
+  const formatOpts = { ...FORMAT_OPTIONS[mode][targetFormat], quality: output.quality }
 
   pipeline = pipeline.toFormat(targetFormat, formatOpts)
 

@@ -25,6 +25,7 @@ export default function App() {
   const [output, setOutput] = useState<OutputOptions>({
     format: 'original',
     quality: 80,
+    compression: 'max',
     outputDir: '',
     filenameBase: '',
     numberPadding: 3,

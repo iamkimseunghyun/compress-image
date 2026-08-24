@@ -16,6 +16,11 @@ const FIT_OPTIONS: { value: ResizeOptions['fit']; label: string }[] = [
   { value: 'fill', label: '늘리기' },
 ]
 
+const COMPRESSION_OPTIONS: { value: OutputOptions['compression']; label: string; hint: string }[] = [
+  { value: 'max', label: '최대 압축', hint: '파일이 가장 작지만 느립니다' },
+  { value: 'fast', label: '빠른 압축', hint: '몇 배 빠르지만 파일이 15~40% 큽니다' },
+]
+
 const FORMAT_OPTIONS: { value: OutputOptions['format']; label: string }[] = [
   { value: 'original', label: '원본 유지' },
   { value: 'jpeg', label: 'JPEG' },
@@ -28,6 +33,8 @@ const FORMAT_OPTIONS: { value: OutputOptions['format']; label: string }[] = [
 
 export function Settings({ resize, output, onResizeChange, onOutputChange, onSelectOutputDir }: SettingsProps) {
   const renaming = (output.filenameBase ?? '').trim() !== ''
+  const compressionHint =
+    COMPRESSION_OPTIONS.find((o) => o.value === output.compression)?.hint ?? ''
   const filenamePreview = renaming
     ? `${(output.filenameBase ?? '').trim()}_${'1'.padStart(Math.max(1, output.numberPadding ?? 3), '0')}.jpg`
     : `${output.filenamePrefix ?? ''}example${output.filenameSuffix ?? ''}.jpg`
@@ -118,6 +125,21 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+        </div>
+
+        <div className="setting-row">
+          <label>압축 강도</label>
+          <select
+            value={output.compression}
+            onChange={(e) =>
+              onOutputChange({ ...output, compression: e.target.value as OutputOptions['compression'] })
+            }
+          >
+            {COMPRESSION_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="setting-hint">{compressionHint}</p>
         </div>
 
         <div className="setting-row">

@@ -307,6 +307,12 @@ body {
   outline: none;
 }
 
+.setting-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
 .setting-row select:focus,
 .setting-row input[type="number"]:focus,
 .setting-row input[type="text"]:focus {

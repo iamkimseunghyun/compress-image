@@ -30,6 +30,9 @@
   "build": {
     "appId": "com.laaf.compress-image",
     "productName": "Compress Image",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "dist-electron/**/*"

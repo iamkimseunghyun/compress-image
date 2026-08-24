@@ -30,6 +30,8 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 
 **Build pipeline** — `vite-plugin-electron` compiles both main and preload TS into `dist-electron/`, while Vite builds renderer to `dist/`. Sharp is externalized from the bundle as a native module.
 
+electron-builder writes installers to `release/`, which must stay **outside** the globs in `build.files` (`dist/**/*`, `dist-electron/**/*`). electron-builder extracts the Electron runtime into its output directory *before* packing `app.asar`, so pointing its output back at `dist/` makes the app pack a copy of Electron into itself.
+
 ## Key Types
 
 All shared types live in `src/types.ts`: `ImageFileInfo`, `ResizeOptions`, `OutputOptions`, `ProcessingResult`, `ProcessingProgress`, `ElectronAPI` (global `window.api`).

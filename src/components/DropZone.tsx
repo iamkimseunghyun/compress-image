@@ -6,13 +6,14 @@ const HINT_ORDER = ['jpg', 'png', 'webp', 'avif', 'tiff', 'gif', 'svg', 'heic']
 
 interface DropZoneProps {
   onAddFiles: () => void
+  onAddFolder: () => void
   onDropFiles: (paths: string[]) => void
   fileCount: number
   /** Readable extensions without the leading dot, reported by the main process. */
   extensions: string[]
 }
 
-export function DropZone({ onAddFiles, onDropFiles, fileCount, extensions }: DropZoneProps) {
+export function DropZone({ onAddFiles, onAddFolder, onDropFiles, fileCount, extensions }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const dragCounter = useRef(0)
 
@@ -43,19 +44,16 @@ export function DropZone({ onAddFiles, onDropFiles, fileCount, extensions }: Dro
     dragCounter.current = 0
     setDragging(false)
 
+    // Everything dropped is forwarded as-is: a folder has no useful extension,
+    // and only the main process can tell one from a file or walk its contents.
     const paths: string[] = []
     for (const file of Array.from(e.dataTransfer.files)) {
-      // Suffix match rather than the last dot-segment: Sharp reports compound
-      // suffixes such as `svg.gz`, which `split('.').pop()` would read as `gz`.
-      const name = file.name.toLowerCase()
-      if (extensions.some((ext) => name.endsWith(`.${ext}`))) {
-        // Use Electron's webUtils.getPathForFile() via preload bridge
-        const filePath = window.api.getPathForFile(file)
-        if (filePath) paths.push(filePath)
-      }
+      // Use Electron's webUtils.getPathForFile() via preload bridge
+      const filePath = window.api.getPathForFile(file)
+      if (filePath) paths.push(filePath)
     }
     if (paths.length) onDropFiles(paths)
-  }, [onDropFiles, extensions])
+  }, [onDropFiles])
 
   return (
     <div
@@ -63,7 +61,12 @@ export function DropZone({ onAddFiles, onDropFiles, fileCount, extensions }: Dro
       role="button"
       tabIndex={0}
       onClick={onAddFiles}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onAddFiles() }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        // Space would otherwise scroll the panel as well as activating.
+        e.preventDefault()
+        onAddFiles()
+      }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -81,6 +84,12 @@ export function DropZone({ onAddFiles, onDropFiles, fileCount, extensions }: Dro
         <span className="dropzone-hint">
           {HINT_ORDER.filter((e) => extensions.includes(e)).map((e) => e.toUpperCase()).join(', ')}
         </span>
+        <button
+          className="btn-text dropzone-folder"
+          onClick={(e) => { e.stopPropagation(); onAddFolder() }}
+        >
+          폴더 추가
+        </button>
       </div>
     </div>
   )

@@ -3,7 +3,7 @@ import type {
   AvifOptions, GifOptions, JpegOptions, Metadata, PngOptions, TiffOptions, WebpOptions,
 } from 'sharp'
 import path from 'node:path'
-import fs from 'node:fs'
+import fs from 'node:fs/promises'
 import os from 'node:os'
 import type { ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress, ImageFileInfo } from '../src/types'
 import { buildOutputName, createOutputPathReserver, getExtension, type ReserveOutputPath } from './outputPath'
@@ -54,6 +54,16 @@ const FORMAT_OPTIONS: Record<OutputOptions['compression'], Record<WritableFormat
 // concurrency on top.
 const MAX_CONCURRENCY = 8
 
+/** Edge length of the preview shown in the file list. */
+const THUMBNAIL_PX = 96
+
+/**
+ * Ceiling on a single image. A truncated or adversarially crafted file can send
+ * libvips into work that never finishes, which would pin one of the eight
+ * workers for the rest of the batch.
+ */
+const PER_IMAGE_TIMEOUT_S = 120
+
 // Input formats the app means to accept. The actual extension list is derived
 // from what this build of Sharp reports as readable, so it can never advertise
 // something that fails on open: the prebuilt binaries carry no HEVC decoder, so
@@ -73,7 +83,7 @@ export function getSupportedExtensions(): string[] {
 
 export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
   const metadata = await sharp(filePath).metadata()
-  const stats = fs.statSync(filePath)
+  const stats = await fs.stat(filePath)
 
   // Report post-rotation dimensions so the list matches what gets written.
   const oriented = orientedSize(metadata)
@@ -85,6 +95,33 @@ export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
     width: oriented.width,
     height: oriented.height,
     format: metadata.format ?? 'unknown',
+    thumbnail: await renderThumbnail(filePath, metadata.format),
+  }
+}
+
+/**
+ * A small preview for the file list, inlined as a data URI so the renderer needs
+ * no filesystem access. Failure is not worth surfacing — the list simply shows
+ * no image — so a broken thumbnail never blocks adding a valid file.
+ */
+async function renderThumbnail(filePath: string, format: string | undefined): Promise<string | undefined> {
+  try {
+    const buffer = await sharp(filePath, {
+      autoOrient: true,
+      // Only useful here. libvips rasterises an SVG at its declared size, and
+      // withoutEnlargement then refuses to scale it up, so a 32px icon would
+      // yield a 32px thumbnail in a 96px box; doubling the density gives 64px.
+      // The main pipeline needs no equivalent — Sharp re-renders the vector at
+      // the resize target, so its output is already sharp at any size.
+      density: format === 'svg' ? 144 : undefined,
+    })
+      .resize(THUMBNAIL_PX, THUMBNAIL_PX, { fit: 'cover', withoutEnlargement: true })
+      .webp({ quality: 60 })
+      .timeout({ seconds: 10 })
+      .toBuffer()
+    return `data:image/webp;base64,${buffer.toString('base64')}`
+  } catch {
+    return undefined
   }
 }
 
@@ -93,6 +130,7 @@ export async function processImages(
   resize: ResizeOptions,
   output: OutputOptions,
   onProgress: (progress: ProcessingProgress) => void,
+  shouldCancel: () => boolean = () => false,
 ): Promise<ProcessingResult[]> {
   // Preserve input order in results; each file keeps its original index so the
   // rename auto-numbering stays deterministic regardless of completion order.
@@ -109,10 +147,17 @@ export async function processImages(
   let lastProgressAt = 0
   const PROGRESS_THROTTLE_MS = 100
 
+  // Once per batch rather than once per image, and before any worker starts, so
+  // an unwritable folder fails here instead of repeating on every single file.
+  await fs.mkdir(output.outputDir, { recursive: true })
+
   onProgress({ current: 0, total: files.length, currentFile: '' })
 
   async function worker(): Promise<void> {
     while (true) {
+      // Checked before claiming an index so a cancelled batch stops at the next
+      // file boundary; the encode already in flight is allowed to finish.
+      if (shouldCancel()) return
       const i = nextIndex++
       if (i >= files.length) return
 
@@ -142,8 +187,10 @@ export async function processImages(
 
   await Promise.all(Array.from({ length: concurrency }, worker))
 
-  onProgress({ current: files.length, total: files.length, currentFile: '' })
-  return results
+  // A cancelled batch leaves holes in the pre-sized array; filter() skips them.
+  const processed = results.filter((r): r is ProcessingResult => r !== undefined)
+  onProgress({ current: processed.length, total: files.length, currentFile: '' })
+  return processed
 }
 
 async function processSingleImage(
@@ -153,11 +200,17 @@ async function processSingleImage(
   index: number,
   reserveOutputPath: ReserveOutputPath,
 ): Promise<ProcessingResult> {
-  const originalStats = fs.statSync(filePath)
+  const originalStats = await fs.stat(filePath)
   // autoOrient bakes the EXIF Orientation into the pixels. Without it every
   // portrait phone or DSLR photo comes out lying on its side, because Sharp
   // neither applies the tag nor copies it to the output.
   let pipeline = sharp(filePath, { animated: true, autoOrient: true })
+  // Deliberately a second, non-animated instance. For an animated image the
+  // animated instance reports the whole frame strip (a 3-frame 100x50 GIF reads
+  // as 100x150), while this one reports a single frame. The percentage maths
+  // below needs per-frame dimensions: with fit 'inside' the strip height happens
+  // to give the same answer, but with 'fill', 'cover' or 'contain' it stretches
+  // every frame. The extra header parse is ~1-2ms against ~90ms of encoding.
   const metadata = await sharp(filePath).metadata()
 
   // ── Resize ──
@@ -199,7 +252,7 @@ async function processSingleImage(
 
   // keepIccProfile carries the source colour profile through. Without it a
   // Display P3 photo is written as untagged sRGB and visibly shifts hue.
-  pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile()
+  pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile().timeout({ seconds: PER_IMAGE_TIMEOUT_S })
 
   // ── Output Path ──
   // Reserved synchronously, before any await, so two workers producing the same
@@ -218,9 +271,6 @@ async function processSingleImage(
       skipped: true,
     }
   }
-
-  // Ensure output directory exists
-  fs.mkdirSync(output.outputDir, { recursive: true })
 
   const result = await pipeline.toFile(outputPath)
 

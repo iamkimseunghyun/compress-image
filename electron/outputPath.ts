@@ -1,6 +1,9 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import type { OutputOptions } from '../src/types'
+import { getExtension } from '../src/utils/imageFormats'
+
+export { getExtension }
 
 /** Path separators, the characters Windows forbids in a name, and control codes. */
 const ILLEGAL_CHARS = /[\\/:*?"<>|]|\p{Cc}/gu
@@ -13,19 +16,6 @@ const ILLEGAL_CHARS = /[\\/:*?"<>|]|\p{Cc}/gu
  */
 export function sanitizeSegment(value: string): string {
   return value.replace(ILLEGAL_CHARS, '_')
-}
-
-const EXTENSIONS: Record<string, string> = {
-  jpeg: 'jpg',
-  png: 'png',
-  webp: 'webp',
-  avif: 'avif',
-  tiff: 'tiff',
-  gif: 'gif',
-}
-
-export function getExtension(format: string): string {
-  return EXTENSIONS[format] ?? format
 }
 
 export function buildOutputName(filePath: string, output: OutputOptions, index: number): string {

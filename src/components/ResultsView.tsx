@@ -4,6 +4,9 @@ import { formatDuration, formatSize } from '../utils/format'
 interface ResultsViewProps {
   results: ProcessingResult[]
   elapsedMs: number
+  /** Files the batch started with; larger than `results` when it was cancelled. */
+  total: number
+  outputDir: string
   onReset: () => void
 }
 
@@ -11,7 +14,8 @@ function basename(filePath: string): string {
   return filePath.split(/[/\\]/).pop() ?? filePath
 }
 
-export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
+export function ResultsView({ results, elapsedMs, total, outputDir, onReset }: ResultsViewProps) {
+  const notProcessed = Math.max(0, total - results.length)
   const succeeded = results.filter((r) => r.success)
   // Skipped files are reported as not-success so they stay out of the size
   // totals, but they are a deliberate outcome rather than a failure.
@@ -19,14 +23,19 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
   const failed = results.filter((r) => !r.success && !r.skipped)
   const totalOriginal = succeeded.reduce((sum, r) => sum + r.originalSize, 0)
   const totalProcessed = succeeded.reduce((sum, r) => sum + r.processedSize, 0)
-  const savedPercent = totalOriginal > 0
-    ? ((1 - totalProcessed / totalOriginal) * 100).toFixed(1)
-    : '0'
+  // Output can be larger than input — an upscale, or a lossless PNG re-encode.
+  // Reporting that as "-12.3% 절감" reads as a saving of a negative amount.
+  const savedRatio = totalOriginal > 0 ? 1 - totalProcessed / totalOriginal : 0
+  const grew = savedRatio < 0
+  const savedPercent = (Math.abs(savedRatio) * 100).toFixed(1)
 
   return (
     <div className="results">
       <div className="results-summary">
-        <h2>처리 완료</h2>
+        <h2>{notProcessed > 0 ? '처리 취소됨' : '처리 완료'}</h2>
+        {notProcessed > 0 && (
+          <p className="results-note">{total}개 중 {results.length}개까지 처리했습니다.</p>
+        )}
         <div className="results-stats">
           <div className="stat">
             <span className="stat-value">{succeeded.length}</span>
@@ -52,9 +61,9 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
             <span className="stat-value">{formatSize(totalProcessed)}</span>
             <span className="stat-label">결과 합계</span>
           </div>
-          <div className="stat stat-highlight">
+          <div className={`stat ${grew ? 'stat-warn' : 'stat-highlight'}`}>
             <span className="stat-value">{savedPercent}%</span>
-            <span className="stat-label">절감</span>
+            <span className="stat-label">{grew ? '증가' : '절감'}</span>
           </div>
           {elapsedMs > 0 && (
             <div className="stat">
@@ -73,10 +82,19 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
           >
             <span className="result-name">{basename(r.inputPath)}</span>
             {r.success ? (
-              <span className="result-meta">
-                {formatSize(r.originalSize)} → {formatSize(r.processedSize)}
-                {' '}({r.width}×{r.height})
-              </span>
+              <>
+                <span className="result-meta">
+                  {formatSize(r.originalSize)} → {formatSize(r.processedSize)}
+                  {' '}({r.width}×{r.height})
+                </span>
+                <button
+                  className="btn-text result-reveal"
+                  title="Finder에서 보기"
+                  onClick={() => window.api.showItemInFolder(r.outputPath)}
+                >
+                  위치
+                </button>
+              </>
             ) : r.skipped ? (
               <span className="result-meta">같은 이름의 파일이 있어 건너뜀</span>
             ) : (
@@ -86,9 +104,16 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
         ))}
       </ul>
 
-      <button className="btn-process" onClick={onReset}>
-        새로운 작업
-      </button>
+      <div className="results-actions">
+        {outputDir && (
+          <button className="btn-secondary" onClick={() => window.api.openPath(outputDir)}>
+            출력 폴더 열기
+          </button>
+        )}
+        <button className="btn-process" onClick={onReset}>
+          새로운 작업
+        </button>
+      </div>
     </div>
   )
 }

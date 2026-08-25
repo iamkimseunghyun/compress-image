@@ -5,6 +5,7 @@ import { ImageList } from './components/ImageList'
 import { Settings } from './components/Settings'
 import { ResultsView } from './components/ResultsView'
 import { describeIpcError } from './utils/ipcError'
+import { loadSettings, saveSettings } from './utils/settingsStore'
 
 type AppState = 'idle' | 'processing' | 'done'
 
@@ -28,6 +29,10 @@ export default function App() {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [extensions, setExtensions] = useState<string[]>([])
   const [notice, setNotice] = useState<AddNotice | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  // How many files the finished batch started with, so a cancelled run can say
+  // how much it got through.
+  const [batchTotal, setBatchTotal] = useState(0)
 
   // Mirrors the current paths so the add handler can count duplicates without
   // doing that bookkeeping inside a setState updater (updaters run twice under
@@ -37,28 +42,28 @@ export default function App() {
     knownPaths.current = new Set(files.map((f) => f.path))
   }, [files])
 
-  const [resize, setResize] = useState<ResizeOptions>({
-    mode: 'percentage',
-    percentage: 50,
-    width: 1920,
-    height: 1080,
-    fit: 'inside',
-    noEnlarge: true,
-  })
+  // Read once on mount so the first paint already shows the restored settings.
+  const [initial] = useState(loadSettings)
+  const [resize, setResize] = useState<ResizeOptions>(initial.resize)
+  const [output, setOutput] = useState<OutputOptions>(initial.output)
 
-  const [output, setOutput] = useState<OutputOptions>({
-    format: 'original',
-    quality: 80,
-    compression: 'max',
-    palette: false,
-    paletteColours: 256,
-    onConflict: 'number',
-    outputDir: '',
-    filenameBase: '',
-    numberPadding: 3,
-    filenamePrefix: '',
-    filenameSuffix: '_compressed',
-  })
+  useEffect(() => {
+    saveSettings({ resize, output })
+  }, [resize, output])
+
+  // A restored output folder may have been deleted, renamed, or live on a
+  // volume that is no longer mounted. Clear it rather than showing a path that
+  // will fail at write time.
+  useEffect(() => {
+    const restored = initial.output.outputDir
+    if (!restored) return
+    let stale = false
+    window.api.directoryExists(restored).then((exists) => {
+      if (stale || exists) return
+      setOutput((prev) => (prev.outputDir === restored ? { ...prev, outputDir: '' } : prev))
+    })
+    return () => { stale = true }
+  }, [initial])
 
   useEffect(() => {
     const cleanup = window.api.onProgress(setProgress)
@@ -122,14 +127,24 @@ export default function App() {
     setNotice(failed.length || duplicates ? { failed, duplicates } : null)
   }, [])
 
-  const handleAddFiles = useCallback(async () => {
-    const paths = await window.api.selectFiles()
-    addFilesByPaths(paths)
+  // Everything funnels through expandPaths: it walks folders and drops files
+  // this build cannot decode, so the renderer never has to know either.
+  const addExpanded = useCallback(async (paths: string[]) => {
+    if (!paths.length) return
+    addFilesByPaths(await window.api.expandPaths(paths))
   }, [addFilesByPaths])
 
+  const handleAddFiles = useCallback(async () => {
+    addExpanded(await window.api.selectFiles())
+  }, [addExpanded])
+
+  const handleAddFolder = useCallback(async () => {
+    addExpanded(await window.api.selectDirectory())
+  }, [addExpanded])
+
   const handleDropFiles = useCallback((paths: string[]) => {
-    addFilesByPaths(paths)
-  }, [addFilesByPaths])
+    addExpanded(paths)
+  }, [addExpanded])
 
   const handleRemoveFile = useCallback((filePath: string) => {
     setFiles((prev) => prev.filter((f) => f.path !== filePath))
@@ -152,6 +167,8 @@ export default function App() {
 
     setState('processing')
     setResults([])
+    setCancelling(false)
+    setBatchTotal(files.length)
 
     try {
       const filePaths = files.map((f) => f.path)
@@ -163,10 +180,19 @@ export default function App() {
     } catch (err) {
       // Unexpected IPC/processing failure — surface it and return to idle instead of hanging.
       console.error('Image processing failed:', err)
-      alert(`이미지 처리 중 오류가 발생했습니다.\n${err instanceof Error ? err.message : String(err)}`)
+      // A native dialog rather than alert(), which blocks the renderer and looks
+      // foreign in a desktop app.
+      window.api.showError('이미지 처리 실패', describeIpcError(err))
       setState('idle')
+    } finally {
+      setCancelling(false)
     }
   }, [files, resize, output])
+
+  const handleCancel = useCallback(async () => {
+    setCancelling(true)
+    await window.api.cancelProcessing()
+  }, [])
 
   const handleReset = useCallback(() => {
     setState('idle')
@@ -184,12 +210,21 @@ export default function App() {
 
       <main className="app-main">
         {state === 'done' ? (
-          <ResultsView results={results} elapsedMs={elapsedMs} onReset={handleReset} />
+          <ResultsView
+            results={results}
+            elapsedMs={elapsedMs}
+            total={batchTotal}
+            outputDir={output.outputDir}
+            onReset={handleReset}
+          />
         ) : (
           <>
-            <div className="panel-left">
+            {/* `inert` while processing: the batch runs off a snapshot taken at
+                start, so edits made now would silently not apply. */}
+            <div className="panel-left" inert={state === 'processing'}>
               <DropZone
                 onAddFiles={handleAddFiles}
+                onAddFolder={handleAddFolder}
                 onDropFiles={handleDropFiles}
                 fileCount={files.length}
                 extensions={extensions}
@@ -202,7 +237,7 @@ export default function App() {
               />
             </div>
 
-            <div className="panel-right">
+            <div className="panel-right" inert={state === 'processing'}>
               <Settings
                 resize={resize}
                 output={output}
@@ -220,15 +255,27 @@ export default function App() {
           {state === 'processing' ? (
             <div className="progress-bar-container">
               <div className="progress-info">
-                <span>처리 중: {progress.currentFile}</span>
+                {/* Files are reported as they finish, and several run at once,
+                    so naming one as "currently processing" would be a fiction. */}
+                <span>{progress.currentFile ? `완료: ${progress.currentFile}` : '처리 중…'}</span>
                 <span>{progress.current}/{progress.total}</span>
               </div>
-              <div className="progress-bar">
+              <div
+                className="progress-bar"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                aria-valuenow={progress.current}
+                aria-label="이미지 처리 진행률"
+              >
                 <div
                   className="progress-fill"
                   style={{ width: `${progress.total ? (progress.current / progress.total) * 100 : 0}%` }}
                 />
               </div>
+              <button className="btn-cancel" onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? '남은 작업을 정리하는 중…' : '취소'}
+              </button>
             </div>
           ) : (
             <button

@@ -30,10 +30,19 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 - `electron/preload.ts` — Context bridge exposing `window.api` to renderer (contextIsolation enabled)
 - `electron/imageProcessor.ts` — Sharp-based processing: resize, format conversion, quality control, batch execution with progress callbacks
 - `electron/outputPath.ts` — filename sanitising, extension mapping, and per-batch output path reservation (collision handling). Pure and unit-tested
-- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages), unit-tested
+- `electron/windowState.ts` — persists window size/position/maximised state under `app.getPath('userData')`; drops a restored position that no longer overlaps a connected display
+- `electron/ipcValidation.ts` — parses/clamps the `process-images` payload before the main process acts on it. Throws where there is no safe default (missing or relative output directory), clamps everything else. Pure and unit-tested
+- `electron/fileScan.ts` — walks dropped or picked directories into a flat, stably-ordered list of decodable files. Pure-ish and unit-tested
+- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages, settings persistence), unit-tested
 - `src/` — React renderer (Vite-bundled): App state manages file list, settings, processing lifecycle
 
-**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `process-images`, `process-progress` (main→renderer)
+**IPC channels**: `select-files`, `select-directory`, `expand-paths`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `directory-exists`, `open-path`, `show-item-in-folder`, `show-error`, `process-images`, `cancel-processing`, `process-progress` (main→renderer)
+
+Dropped paths go straight to `expand-paths`: only the main process can tell a folder from a file or walk it, so the renderer does no extension filtering of its own.
+
+Resize/output settings persist to `localStorage` via `src/utils/settingsStore.ts`. Stored values are treated as untrusted and coerced back into range on load, so settings written by an older build (or edited by hand) degrade to defaults instead of reaching Sharp as invalid options. A restored output folder is re-checked via `directory-exists` and cleared if it has gone.
+
+Batches are cancellable: `processImages` takes a `shouldCancel` predicate checked before each file is claimed, so the in-flight encode finishes and no new work starts. It also fires when the window closes mid-batch. A cancelled run returns only the results it completed, and the renderer marks both panels `inert` while a batch is in flight because the batch runs off a snapshot taken at start.
 
 Accepted input extensions are derived at runtime from `sharp.format` rather than hard-coded, so the file dialog and drop zone cannot advertise a format this build cannot decode (the prebuilt libvips has no HEVC decoder, so `.heic`/`.heif` are correctly absent).
 
@@ -41,7 +50,15 @@ Accepted input extensions are derived at runtime from `sharp.format` rather than
 
 **Build pipeline** — `vite-plugin-electron` compiles both main and preload TS into `dist-electron/`, while Vite builds renderer to `dist/`. Sharp is externalized from the bundle as a native module.
 
+**Renderer hardening** — `sandbox: true` (the preload only needs `contextBridge`/`ipcRenderer`/`webUtils`, all available to a sandboxed preload), `setWindowOpenHandler` denies new windows, and a strict CSP `<meta>` is injected by a `csp-meta` Vite plugin that runs on build only — the dev server needs inline scripts and `eval` for HMR, so injecting it in dev would break `npm run dev`.
+
+**Sharp and SVG** — do not add a `density` option to the main pipeline. Sharp re-renders a vector at the resize target, so SVG output is already sharp at any size (measured: the edge transitions over one pixel either way). Density only matters for the thumbnail, where `withoutEnlargement` otherwise pins an SVG to its declared size.
+
 electron-builder writes installers to `release/`, which must stay **outside** the globs in `build.files` (`dist/**/*`, `dist-electron/**/*`). electron-builder extracts the Electron runtime into its output directory *before* packing `app.asar`, so pointing its output back at `dist/` makes the app pack a copy of Electron into itself.
+
+`asarUnpack` names Sharp's native payload explicitly rather than relying on electron-builder's auto-detection of `.node` files, since `@img/sharp-libvips-*` ships `.dylib`/`.so` files that the heuristic does not cover.
+
+`npm run package` builds only for the host architecture. An Intel build needs the matching Sharp binaries first — `npm run package:x64` installs them and builds in one step. Distribution additionally requires code signing and notarisation, which are **not** configured: without them macOS refuses the downloaded app.
 
 ## Key Types
 

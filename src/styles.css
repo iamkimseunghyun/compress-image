@@ -313,6 +313,26 @@ body {
   color: var(--text-dim);
 }
 
+/* Checkbox rows read as a single control, so they run horizontally.
+   Declared after .setting-row so the direction override wins. */
+.setting-row-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-row-check label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setting-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
 .setting-row select:focus,
 .setting-row input[type="number"]:focus,
 .setting-row input[type="text"]:focus {

@@ -9,12 +9,14 @@ interface SettingsProps {
 }
 
 const FIT_OPTIONS: { value: ResizeOptions['fit']; label: string }[] = [
-  { value: 'inside', label: '비율 유지 (축소)' },
-  { value: 'outside', label: '비율 유지 (확대)' },
+  { value: 'inside', label: '비율 유지 · 지정 크기 안에 맞춤' },
+  { value: 'outside', label: '비율 유지 · 지정 크기를 덮음' },
   { value: 'cover', label: '채우기 (잘림)' },
-  { value: 'contain', label: '맞추기 (여백)' },
-  { value: 'fill', label: '늘리기' },
+  { value: 'contain', label: '맞추기 (여백 추가)' },
+  { value: 'fill', label: '늘리기 (비율 무시)' },
 ]
+
+const PALETTE_COLOUR_OPTIONS = [256, 128, 64, 32]
 
 const COMPRESSION_OPTIONS: { value: OutputOptions['compression']; label: string; hint: string }[] = [
   { value: 'max', label: '최대 압축', hint: '파일이 가장 작지만 느립니다' },
@@ -109,6 +111,25 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
             </select>
           </div>
         )}
+
+        {resize.mode !== 'none' && (
+          <>
+            <div className="setting-row setting-row-check">
+              <input
+                id="no-enlarge"
+                type="checkbox"
+                checked={resize.noEnlarge}
+                onChange={(e) => onResizeChange({ ...resize, noEnlarge: e.target.checked })}
+              />
+              <label htmlFor="no-enlarge">원본보다 크게 만들지 않기</label>
+            </div>
+            {resize.noEnlarge && resize.fit === 'contain' && (
+              <p className="setting-hint">
+                ‘맞추기’는 지정한 크기를 항상 채우므로 이 설정이 적용되지 않습니다.
+              </p>
+            )}
+          </>
+        )}
       </section>
 
       {/* ── Output ── */}
@@ -151,7 +172,39 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
             value={output.quality}
             onChange={(e) => onOutputChange({ ...output, quality: Number(e.target.value) })}
           />
+          <p className="setting-hint">
+            JPEG · WebP · AVIF · TIFF에만 적용됩니다. PNG · GIF는 아래 색상 압축을 사용하세요.
+          </p>
         </div>
+
+        <div className="setting-row setting-row-check">
+          <input
+            id="palette"
+            type="checkbox"
+            checked={output.palette}
+            onChange={(e) => onOutputChange({ ...output, palette: e.target.checked })}
+          />
+          <label htmlFor="palette">PNG · GIF 색상 압축</label>
+        </div>
+
+        {output.palette ? (
+          <div className="setting-row">
+            <label>최대 색상 수</label>
+            <select
+              value={output.paletteColours}
+              onChange={(e) =>
+                onOutputChange({ ...output, paletteColours: Number(e.target.value) })
+              }
+            >
+              {PALETTE_COLOUR_OPTIONS.map((n) => (
+                <option key={n} value={n}>{n}색</option>
+              ))}
+            </select>
+            <p className="setting-hint">색을 줄여 파일을 크게 줄이지만 되돌릴 수 없습니다.</p>
+          </div>
+        ) : (
+          <p className="setting-hint">끄면 PNG는 무손실로 저장됩니다.</p>
+        )}
 
         <div className="setting-row">
           <label>새 파일명 (이름 바꾸기)</label>

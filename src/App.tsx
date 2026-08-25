@@ -20,12 +20,15 @@ export default function App() {
     width: 1920,
     height: 1080,
     fit: 'inside',
+    noEnlarge: true,
   })
 
   const [output, setOutput] = useState<OutputOptions>({
     format: 'original',
     quality: 80,
     compression: 'max',
+    palette: false,
+    paletteColours: 256,
     outputDir: '',
     filenameBase: '',
     numberPadding: 3,

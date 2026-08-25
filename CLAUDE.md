@@ -21,6 +21,7 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 
 **Process model** — Electron's main/renderer split with IPC bridge:
 
+- `electron/threadpool.ts` — sizes `UV_THREADPOOL_SIZE` before Sharp runs; imported first from `main.ts`. Sharp's encoders are libuv threadpool tasks and the default pool of 4 caps `MAX_CONCURRENCY` at 4 regardless of its value
 - `electron/main.ts` — Electron main process: window creation, IPC handlers for file dialogs and image processing
 - `electron/preload.ts` — Context bridge exposing `window.api` to renderer (contextIsolation enabled)
 - `electron/imageProcessor.ts` — Sharp-based processing: resize, format conversion, quality control, batch execution with progress callbacks

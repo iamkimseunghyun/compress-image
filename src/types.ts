@@ -13,6 +13,12 @@ export interface ResizeOptions {
   width: number
   height: number
   fit: 'cover' | 'contain' | 'fill' | 'inside' | 'outside'
+  /**
+   * Never scale an image up past its original size. Sharp's 'inside'/'outside'
+   * fits enlarge by default, which makes small sources *grow* in a compressor.
+   * Has no effect with fit 'contain', which always pads to the exact size.
+   */
+  noEnlarge: boolean
 }
 
 export interface OutputOptions {
@@ -24,6 +30,13 @@ export interface OutputOptions {
    * 'max' when absent so existing callers keep their current output.
    */
   compression: 'max' | 'fast'
+  /**
+   * Opt-in lossy colour reduction for the palette formats (PNG, GIF). `quality`
+   * does not apply to either — see USES_QUALITY in imageProcessor.ts.
+   */
+  palette: boolean
+  /** Maximum palette entries when `palette` is on, 2-256. */
+  paletteColours: number
   outputDir: string
   /** When set, fully renames output to `{filenameBase}_{number}` (prefix/suffix ignored). Empty = keep original name. */
   filenameBase: string

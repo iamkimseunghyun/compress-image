@@ -1,3 +1,6 @@
+// Must stay first: it sizes the libuv threadpool that Sharp's encoders run on,
+// and the pool's size is fixed the first time anything uses it.
+import './threadpool'
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -91,6 +94,9 @@ ipcMain.handle('get-image-info', async (_event, filePath: string) => {
 ipcMain.handle('process-images', async (event, args) => {
   const { files, resize, output } = args
   return processImages(files, resize, output, (progress) => {
-    event.sender.send('process-progress', progress)
+    // The window can be closed mid-batch; sending to destroyed webContents throws.
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('process-progress', progress)
+    }
   })
 })

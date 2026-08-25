@@ -30,10 +30,15 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 - `electron/preload.ts` — Context bridge exposing `window.api` to renderer (contextIsolation enabled)
 - `electron/imageProcessor.ts` — Sharp-based processing: resize, format conversion, quality control, batch execution with progress callbacks
 - `electron/outputPath.ts` — filename sanitising, extension mapping, and per-batch output path reservation (collision handling). Pure and unit-tested
-- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages), unit-tested
+- `electron/windowState.ts` — persists window size/position/maximised state under `app.getPath('userData')`; drops a restored position that no longer overlaps a connected display
+- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages, settings persistence), unit-tested
 - `src/` — React renderer (Vite-bundled): App state manages file list, settings, processing lifecycle
 
-**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `process-images`, `process-progress` (main→renderer)
+**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `directory-exists`, `process-images`, `cancel-processing`, `process-progress` (main→renderer)
+
+Resize/output settings persist to `localStorage` via `src/utils/settingsStore.ts`. Stored values are treated as untrusted and coerced back into range on load, so settings written by an older build (or edited by hand) degrade to defaults instead of reaching Sharp as invalid options. A restored output folder is re-checked via `directory-exists` and cleared if it has gone.
+
+Batches are cancellable: `processImages` takes a `shouldCancel` predicate checked before each file is claimed, so the in-flight encode finishes and no new work starts. It also fires when the window closes mid-batch. A cancelled run returns only the results it completed, and the renderer marks both panels `inert` while a batch is in flight because the batch runs off a snapshot taken at start.
 
 Accepted input extensions are derived at runtime from `sharp.format` rather than hard-coded, so the file dialog and drop zone cannot advertise a format this build cannot decode (the prebuilt libvips has no HEVC decoder, so `.heic`/`.heif` are correctly absent).
 

@@ -5,6 +5,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { processImages, getImageInfo, getSupportedExtensions } from './imageProcessor'
+import { loadWindowState, trackWindowState } from './windowState'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged
@@ -15,9 +16,12 @@ let mainWindow: BrowserWindow | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 function createWindow() {
+  const saved = loadWindowState()
+
   mainWindow = new BrowserWindow({
-    width: 960,
-    height: 720,
+    ...saved,
+    width: saved.width ?? 960,
+    height: saved.height ?? 720,
     minWidth: 760,
     minHeight: 560,
     webPreferences: {
@@ -28,6 +32,9 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
   })
+
+  if (saved.maximised) mainWindow.maximize()
+  trackWindowState(mainWindow)
 
   // Prevent Electron from navigating to dropped files
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault())
@@ -89,12 +96,40 @@ ipcMain.handle('get-image-info', async (_event, filePath: string) => {
   return getImageInfo(filePath)
 })
 
+// The renderer restores a previously chosen output folder from localStorage; it
+// may since have been deleted, renamed, or live on an unmounted volume.
+ipcMain.handle('directory-exists', async (_event, dir: string) => {
+  try {
+    return fs.statSync(dir).isDirectory()
+  } catch {
+    return false
+  }
+})
+
+// Set for the batch currently in flight. Only one batch can run at a time —
+// the renderer disables the start button while processing.
+let cancelRequested = false
+
+ipcMain.handle('cancel-processing', () => {
+  cancelRequested = true
+})
+
 ipcMain.handle('process-images', async (event, args) => {
   const { files, resize, output } = args
-  return processImages(files, resize, output, (progress) => {
-    // The window can be closed mid-batch; sending to destroyed webContents throws.
-    if (!event.sender.isDestroyed()) {
-      event.sender.send('process-progress', progress)
-    }
-  })
+  cancelRequested = false
+
+  return processImages(
+    files,
+    resize,
+    output,
+    (progress) => {
+      // The window can be closed mid-batch; sending to destroyed webContents throws.
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('process-progress', progress)
+      }
+    },
+    // Closing the window mid-batch also stops the work, rather than leaving it
+    // grinding through hundreds of files nobody is waiting for.
+    () => cancelRequested || event.sender.isDestroyed(),
+  )
 })

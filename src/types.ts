@@ -78,6 +78,9 @@ export interface ElectronAPI {
   getImageInfo: (filePath: string) => Promise<ImageFileInfo>
   /** Extensions this build of Sharp can actually decode, without the leading dot. */
   getSupportedExtensions: () => Promise<string[]>
+  directoryExists: (dir: string) => Promise<boolean>
+  /** Stops the running batch at the next file boundary. */
+  cancelProcessing: () => Promise<void>
   getPathForFile: (file: File) => string
   processImages: (
     files: string[],

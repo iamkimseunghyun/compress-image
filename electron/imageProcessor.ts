@@ -3,7 +3,7 @@ import type {
   AvifOptions, GifOptions, JpegOptions, Metadata, PngOptions, TiffOptions, WebpOptions,
 } from 'sharp'
 import path from 'node:path'
-import fs from 'node:fs'
+import fs from 'node:fs/promises'
 import os from 'node:os'
 import type { ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress, ImageFileInfo } from '../src/types'
 import { buildOutputName, createOutputPathReserver, getExtension, type ReserveOutputPath } from './outputPath'
@@ -73,7 +73,7 @@ export function getSupportedExtensions(): string[] {
 
 export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
   const metadata = await sharp(filePath).metadata()
-  const stats = fs.statSync(filePath)
+  const stats = await fs.stat(filePath)
 
   // Report post-rotation dimensions so the list matches what gets written.
   const oriented = orientedSize(metadata)
@@ -93,6 +93,7 @@ export async function processImages(
   resize: ResizeOptions,
   output: OutputOptions,
   onProgress: (progress: ProcessingProgress) => void,
+  shouldCancel: () => boolean = () => false,
 ): Promise<ProcessingResult[]> {
   // Preserve input order in results; each file keeps its original index so the
   // rename auto-numbering stays deterministic regardless of completion order.
@@ -109,10 +110,17 @@ export async function processImages(
   let lastProgressAt = 0
   const PROGRESS_THROTTLE_MS = 100
 
+  // Once per batch rather than once per image, and before any worker starts, so
+  // an unwritable folder fails here instead of repeating on every single file.
+  await fs.mkdir(output.outputDir, { recursive: true })
+
   onProgress({ current: 0, total: files.length, currentFile: '' })
 
   async function worker(): Promise<void> {
     while (true) {
+      // Checked before claiming an index so a cancelled batch stops at the next
+      // file boundary; the encode already in flight is allowed to finish.
+      if (shouldCancel()) return
       const i = nextIndex++
       if (i >= files.length) return
 
@@ -142,8 +150,10 @@ export async function processImages(
 
   await Promise.all(Array.from({ length: concurrency }, worker))
 
-  onProgress({ current: files.length, total: files.length, currentFile: '' })
-  return results
+  // A cancelled batch leaves holes in the pre-sized array; filter() skips them.
+  const processed = results.filter((r): r is ProcessingResult => r !== undefined)
+  onProgress({ current: processed.length, total: files.length, currentFile: '' })
+  return processed
 }
 
 async function processSingleImage(
@@ -153,11 +163,17 @@ async function processSingleImage(
   index: number,
   reserveOutputPath: ReserveOutputPath,
 ): Promise<ProcessingResult> {
-  const originalStats = fs.statSync(filePath)
+  const originalStats = await fs.stat(filePath)
   // autoOrient bakes the EXIF Orientation into the pixels. Without it every
   // portrait phone or DSLR photo comes out lying on its side, because Sharp
   // neither applies the tag nor copies it to the output.
   let pipeline = sharp(filePath, { animated: true, autoOrient: true })
+  // Deliberately a second, non-animated instance. For an animated image the
+  // animated instance reports the whole frame strip (a 3-frame 100x50 GIF reads
+  // as 100x150), while this one reports a single frame. The percentage maths
+  // below needs per-frame dimensions: with fit 'inside' the strip height happens
+  // to give the same answer, but with 'fill', 'cover' or 'contain' it stretches
+  // every frame. The extra header parse is ~1-2ms against ~90ms of encoding.
   const metadata = await sharp(filePath).metadata()
 
   // ── Resize ──
@@ -218,9 +234,6 @@ async function processSingleImage(
       skipped: true,
     }
   }
-
-  // Ensure output directory exists
-  fs.mkdirSync(output.outputDir, { recursive: true })
 
   const result = await pipeline.toFile(outputPath)
 

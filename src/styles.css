@@ -313,6 +313,26 @@ body {
   color: var(--text-dim);
 }
 
+/* Checkbox rows read as a single control, so they run horizontally.
+   Declared after .setting-row so the direction override wins. */
+.setting-row-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-row-check label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.setting-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
 .setting-row select:focus,
 .setting-row input[type="number"]:focus,
 .setting-row input[type="text"]:focus {
@@ -339,6 +359,63 @@ body {
 .setting-row input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
+}
+
+/* ── Add Notice ── */
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+}
+
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  max-height: 108px;
+  overflow-y: auto;
+}
+
+.notice-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.notice-file {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.notice-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-more {
+  color: var(--text-dim);
 }
 
 /* ── Progress Bar ── */

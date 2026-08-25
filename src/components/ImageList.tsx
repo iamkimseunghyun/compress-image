@@ -1,15 +1,10 @@
 import type { ImageFileInfo } from '../types'
+import { formatSize } from '../utils/format'
 
 interface ImageListProps {
   files: ImageFileInfo[]
   onRemove: (path: string) => void
   onClear: () => void
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function ImageList({ files, onRemove, onClear }: ImageListProps) {

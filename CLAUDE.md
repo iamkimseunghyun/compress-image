@@ -4,13 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Electron desktop app for batch image resizing and compression. Uses Sharp (libvips) for high-performance image processing with support for JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG, HEIF formats.
+Electron desktop app for batch image resizing and compression. Uses Sharp (libvips) for high-performance image processing.
+
+**Input**: JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG. Not HEIC/HEIF — the prebuilt libvips carries no HEVC decoder, so `sharp.format.heif` reports `.avif` as its only readable suffix. The accepted list is derived at runtime rather than hard-coded (see Architecture).
+**Output**: JPEG, PNG, WebP, AVIF, TIFF, GIF. SVG input rasterises to PNG.
 
 ## Commands
 
 ```bash
 npm run dev       # Start Vite dev server + Electron (hot reload)
 npm run typecheck # tsc --noEmit for both renderer (tsconfig.json) and electron/vite (tsconfig.node.json)
+npm test          # vitest run (pure-function unit tests; config is vitest.config.ts, NOT vite.config.ts)
 npm run build     # typecheck + Vite production build (renderer + main + preload)
 npm run package   # Build + create platform installer (electron-builder)
 ```
@@ -21,12 +25,19 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 
 **Process model** — Electron's main/renderer split with IPC bridge:
 
+- `electron/threadpool.ts` — sizes `UV_THREADPOOL_SIZE` before Sharp runs; imported first from `main.ts`. Sharp's encoders are libuv threadpool tasks and the default pool of 4 caps `MAX_CONCURRENCY` at 4 regardless of its value
 - `electron/main.ts` — Electron main process: window creation, IPC handlers for file dialogs and image processing
 - `electron/preload.ts` — Context bridge exposing `window.api` to renderer (contextIsolation enabled)
 - `electron/imageProcessor.ts` — Sharp-based processing: resize, format conversion, quality control, batch execution with progress callbacks
+- `electron/outputPath.ts` — filename sanitising, extension mapping, and per-batch output path reservation (collision handling). Pure and unit-tested
+- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages), unit-tested
 - `src/` — React renderer (Vite-bundled): App state manages file list, settings, processing lifecycle
 
-**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `process-images`, `process-progress` (main→renderer)
+**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `process-images`, `process-progress` (main→renderer)
+
+Accepted input extensions are derived at runtime from `sharp.format` rather than hard-coded, so the file dialog and drop zone cannot advertise a format this build cannot decode (the prebuilt libvips has no HEVC decoder, so `.heic`/`.heif` are correctly absent).
+
+`vitest.config.ts` exists separately because `vite.config.ts` loads `vite-plugin-electron`, which would spawn Electron on every test run.
 
 **Build pipeline** — `vite-plugin-electron` compiles both main and preload TS into `dist-electron/`, while Vite builds renderer to `dist/`. Sharp is externalized from the bundle as a native module.
 

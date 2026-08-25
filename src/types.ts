@@ -13,6 +13,12 @@ export interface ResizeOptions {
   width: number
   height: number
   fit: 'cover' | 'contain' | 'fill' | 'inside' | 'outside'
+  /**
+   * Never scale an image up past its original size. Sharp's 'inside'/'outside'
+   * fits enlarge by default, which makes small sources *grow* in a compressor.
+   * Has no effect with fit 'contain', which always pads to the exact size.
+   */
+  noEnlarge: boolean
 }
 
 export interface OutputOptions {
@@ -24,6 +30,20 @@ export interface OutputOptions {
    * 'max' when absent so existing callers keep their current output.
    */
   compression: 'max' | 'fast'
+  /**
+   * Opt-in lossy colour reduction for the palette formats (PNG, GIF). `quality`
+   * does not apply to either — see USES_QUALITY in imageProcessor.ts.
+   */
+  palette: boolean
+  /** Maximum palette entries when `palette` is on, 2-256. */
+  paletteColours: number
+  /**
+   * What to do when the computed output file already exists.
+   * 'number' appends `-1`, `-2`, …; 'overwrite' replaces results from earlier
+   * runs; 'skip' leaves the existing file alone. Names are always de-duplicated
+   * *within* a batch regardless, so one run can never clobber its own output.
+   */
+  onConflict: 'number' | 'overwrite' | 'skip'
   outputDir: string
   /** When set, fully renames output to `{filenameBase}_{number}` (prefix/suffix ignored). Empty = keep original name. */
   filenameBase: string
@@ -41,6 +61,8 @@ export interface ProcessingResult {
   width: number
   height: number
   success: boolean
+  /** Output already existed and `onConflict` is 'skip'; not an error. */
+  skipped?: boolean
   error?: string
 }
 
@@ -54,6 +76,8 @@ export interface ElectronAPI {
   selectFiles: () => Promise<string[]>
   selectOutputDir: () => Promise<string | null>
   getImageInfo: (filePath: string) => Promise<ImageFileInfo>
+  /** Extensions this build of Sharp can actually decode, without the leading dot. */
+  getSupportedExtensions: () => Promise<string[]>
   getPathForFile: (file: File) => string
   processImages: (
     files: string[],

@@ -1,7 +1,10 @@
+// Must stay first: it sizes the libuv threadpool that Sharp's encoders run on,
+// and the pool's size is fixed the first time anything uses it.
+import './threadpool'
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import { processImages, getImageInfo } from './imageProcessor'
+import { processImages, getImageInfo, getSupportedExtensions } from './imageProcessor'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged
@@ -61,18 +64,16 @@ app.on('activate', () => {
 
 // ── IPC Handlers ──
 
+// Derived from Sharp's own capabilities rather than hard-coded, so the dialog
+// filter and the drop zone can never offer a format that fails on open.
+const supportedExtensions = getSupportedExtensions()
+
+ipcMain.handle('get-supported-extensions', () => supportedExtensions)
+
 ipcMain.handle('select-files', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile', 'multiSelections'],
-    filters: [
-      {
-        name: 'Images',
-        extensions: [
-          'jpg', 'jpeg', 'png', 'webp', 'avif',
-          'tiff', 'tif', 'gif', 'svg', 'heif', 'heic',
-        ],
-      },
-    ],
+    filters: [{ name: 'Images', extensions: supportedExtensions }],
   })
   return result.filePaths
 })
@@ -91,6 +92,9 @@ ipcMain.handle('get-image-info', async (_event, filePath: string) => {
 ipcMain.handle('process-images', async (event, args) => {
   const { files, resize, output } = args
   return processImages(files, resize, output, (progress) => {
-    event.sender.send('process-progress', progress)
+    // The window can be closed mid-batch; sending to destroyed webContents throws.
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('process-progress', progress)
+    }
   })
 })

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   selectFiles: () => ipcRenderer.invoke('select-files'),
   selectOutputDir: () => ipcRenderer.invoke('select-output-dir'),
   getImageInfo: (filePath: string) => ipcRenderer.invoke('get-image-info', filePath),
+  getSupportedExtensions: () => ipcRenderer.invoke('get-supported-extensions'),
   processImages: (files: string[], resize: ResizeOptions, output: OutputOptions) =>
     ipcRenderer.invoke('process-images', { files, resize, output }),
   onProgress: (callback: (progress: ProcessingProgress) => void) => {

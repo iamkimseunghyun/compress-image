@@ -6,6 +6,8 @@ import { Settings } from './components/Settings'
 import { ResultsView } from './components/ResultsView'
 import { describeIpcError } from './utils/ipcError'
 import { loadSettings, saveSettings } from './utils/settingsStore'
+import { formatSize } from './utils/format'
+import { useOutputEstimate, type EstimateState } from './hooks/useOutputEstimate'
 
 type AppState = 'idle' | 'processing' | 'done'
 
@@ -200,6 +202,9 @@ export default function App() {
   }, [])
 
   const isReady = files.length > 0 && output.outputDir !== ''
+  // Runs while idle only: during a batch the samples would compete with the
+  // real work for the same encoder threads.
+  const estimate = useOutputEstimate(files, resize, output, state === 'idle')
 
   return (
     <div className="app">
@@ -278,17 +283,20 @@ export default function App() {
               </button>
             </div>
           ) : (
-            <button
-              className="btn-process"
-              disabled={!isReady}
-              onClick={handleProcess}
-            >
-              {!isReady
-                ? files.length === 0
-                  ? '이미지를 추가하세요'
-                  : '출력 폴더를 선택하세요'
-                : `${files.length}개 이미지 처리 시작`}
-            </button>
+            <>
+              <EstimateLine state={estimate} />
+              <button
+                className="btn-process"
+                disabled={!isReady}
+                onClick={handleProcess}
+              >
+                {!isReady
+                  ? files.length === 0
+                    ? '이미지를 추가하세요'
+                    : '출력 폴더를 선택하세요'
+                  : `${files.length}개 이미지 처리 시작`}
+              </button>
+            </>
           )}
         </footer>
       )}
@@ -322,5 +330,34 @@ function AddNoticeBanner({ notice, onDismiss }: { notice: AddNotice; onDismiss: 
         </ul>
       )}
     </div>
+  )
+}
+
+function EstimateLine({ state }: { state: EstimateState }) {
+  if (state.status === 'idle') return null
+
+  if (state.status === 'loading') {
+    return <p className="estimate estimate-muted">예상 크기 계산 중…</p>
+  }
+  if (state.status === 'unavailable') {
+    return <p className="estimate estimate-muted">예상 크기를 계산하지 못했습니다</p>
+  }
+
+  const { totalOriginal, estimatedTotal, savedRatio, sampled } = state.estimate
+  const grew = savedRatio < 0
+
+  return (
+    <p className="estimate">
+      <span className="estimate-label">예상 결과</span>
+      <span className="estimate-sizes">
+        {formatSize(totalOriginal)} → 약 {formatSize(estimatedTotal)}
+      </span>
+      <span className={grew ? 'estimate-grew' : 'estimate-saved'}>
+        {grew ? '+' : '−'}{Math.abs(savedRatio * 100).toFixed(0)}%
+      </span>
+      {/* Say what the number rests on: a projection from a few encoded files,
+          not a measurement of the whole batch. */}
+      <span className="estimate-note">표본 {sampled}개 기준</span>
+    </p>
   )
 }

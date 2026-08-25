@@ -1,6 +1,6 @@
 import sharp from 'sharp'
 import type {
-  AvifOptions, GifOptions, JpegOptions, Metadata, PngOptions, TiffOptions, WebpOptions,
+  AvifOptions, GifOptions, JpegOptions, Metadata, PngOptions, Sharp, TiffOptions, WebpOptions,
 } from 'sharp'
 import path from 'node:path'
 import fs from 'node:fs/promises'
@@ -193,14 +193,18 @@ export async function processImages(
   return processed
 }
 
-async function processSingleImage(
+/**
+ * Builds the encode pipeline for one file, short of writing it anywhere.
+ *
+ * Shared with the size estimate on purpose: an estimate produced by a separate
+ * copy of this logic would drift out of agreement with the real run the first
+ * time either side changed.
+ */
+async function buildPipeline(
   filePath: string,
   resize: ResizeOptions,
   output: OutputOptions,
-  index: number,
-  reserveOutputPath: ReserveOutputPath,
-): Promise<ProcessingResult> {
-  const originalStats = await fs.stat(filePath)
+): Promise<{ pipeline: Sharp; targetFormat: WritableFormat }> {
   // autoOrient bakes the EXIF Orientation into the pixels. Without it every
   // portrait phone or DSLR photo comes out lying on its side, because Sharp
   // neither applies the tag nor copies it to the output.
@@ -254,6 +258,19 @@ async function processSingleImage(
   // Display P3 photo is written as untagged sRGB and visibly shifts hue.
   pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile().timeout({ seconds: PER_IMAGE_TIMEOUT_S })
 
+  return { pipeline, targetFormat }
+}
+
+async function processSingleImage(
+  filePath: string,
+  resize: ResizeOptions,
+  output: OutputOptions,
+  index: number,
+  reserveOutputPath: ReserveOutputPath,
+): Promise<ProcessingResult> {
+  const originalStats = await fs.stat(filePath)
+  const { pipeline, targetFormat } = await buildPipeline(filePath, resize, output)
+
   // ── Output Path ──
   // Reserved synchronously, before any await, so two workers producing the same
   // name cannot be handed the same path and race on the write.
@@ -283,6 +300,28 @@ async function processSingleImage(
     height: result.height,
     success: true,
   }
+}
+
+/**
+ * Encodes the given files at the current settings without writing anything, so
+ * the UI can project what the batch will produce before the user commits to it.
+ * A file that fails to encode reports null rather than failing the whole probe —
+ * one unreadable sample should not remove the estimate for the rest.
+ */
+export async function estimateSizes(
+  files: string[],
+  resize: ResizeOptions,
+  output: OutputOptions,
+): Promise<(number | null)[]> {
+  return Promise.all(files.map(async (filePath) => {
+    try {
+      const { pipeline } = await buildPipeline(filePath, resize, output)
+      const buffer = await pipeline.toBuffer()
+      return buffer.length
+    } catch {
+      return null
+    }
+  }))
 }
 
 /**

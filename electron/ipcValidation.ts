@@ -17,6 +17,9 @@ export interface ProcessRequest {
   output: OutputOptions
 }
 
+/** Ceiling on how many files one estimate may encode. */
+export const MAX_ESTIMATE_SAMPLES = 5
+
 const RESIZE_MODES = ['none', 'percentage', 'dimensions'] as const
 const FITS = ['cover', 'contain', 'fill', 'inside', 'outside'] as const
 const FORMATS = ['original', 'jpeg', 'png', 'webp', 'avif', 'tiff', 'gif'] as const
@@ -43,6 +46,16 @@ function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
+function fileList(raw: unknown, limit: number): string[] {
+  if (!Array.isArray(raw)) throw new Error('처리할 파일 목록이 올바르지 않습니다')
+  const files = raw.filter((f): f is string => typeof f === 'string' && f.length > 0)
+  if (files.length === 0) throw new Error('처리할 파일이 없습니다')
+  if (files.length > limit) {
+    throw new Error(`한 번에 처리할 수 있는 파일은 ${limit}개까지입니다 (요청: ${files.length}개)`)
+  }
+  return files
+}
+
 /**
  * Throws for anything with no safe fallback; clamps everything else. A bad
  * quality value should not fail the batch, but a missing output directory has
@@ -50,25 +63,32 @@ function str(value: unknown, fallback = ''): string {
  */
 export function parseProcessRequest(raw: unknown): ProcessRequest {
   const args = record(raw)
+  const files = fileList(args.files, MAX_FILES)
+  const outputDir = str(record(args.output).outputDir)
 
-  if (!Array.isArray(args.files)) throw new Error('처리할 파일 목록이 올바르지 않습니다')
-  const files = args.files.filter((f): f is string => typeof f === 'string' && f.length > 0)
-  if (files.length === 0) throw new Error('처리할 파일이 없습니다')
-  if (files.length > MAX_FILES) {
-    throw new Error(`한 번에 처리할 수 있는 파일은 ${MAX_FILES}개까지입니다 (요청: ${files.length}개)`)
-  }
-
-  const resizeRaw = record(args.resize)
-  const outputRaw = record(args.output)
-
-  const outputDir = str(outputRaw.outputDir)
   if (outputDir === '') throw new Error('출력 폴더가 지정되지 않았습니다')
   // A relative path would resolve against the app's working directory, which is
   // wherever it happened to be launched from.
   if (!path.isAbsolute(outputDir)) throw new Error(`출력 폴더는 절대 경로여야 합니다: ${outputDir}`)
 
+  return { files, ...parseSettings(args, outputDir) }
+}
+
+/**
+ * The estimate encodes to memory, so it needs no output directory — requiring
+ * one would hide the estimate until after the user picks a folder, which is
+ * exactly when it is least useful.
+ */
+export function parseEstimateRequest(raw: unknown): ProcessRequest {
+  const args = record(raw)
+  return { files: fileList(args.files, MAX_ESTIMATE_SAMPLES), ...parseSettings(args, '') }
+}
+
+function parseSettings(args: Record<string, unknown>, outputDir: string): Omit<ProcessRequest, 'files'> {
+  const resizeRaw = record(args.resize)
+  const outputRaw = record(args.output)
+
   return {
-    files,
     resize: {
       mode: oneOf(resizeRaw.mode, RESIZE_MODES, 'none'),
       percentage: int(resizeRaw.percentage, 1, 100, 100),

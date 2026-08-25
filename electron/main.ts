@@ -4,10 +4,10 @@ import './threadpool'
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import { processImages, getImageInfo, getSupportedExtensions } from './imageProcessor'
+import { processImages, getImageInfo, getSupportedExtensions, estimateSizes } from './imageProcessor'
 import { loadWindowState, trackWindowState } from './windowState'
 import { expandPaths } from './fileScan'
-import { parseProcessRequest } from './ipcValidation'
+import { parseEstimateRequest, parseProcessRequest } from './ipcValidation'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged
@@ -151,6 +151,13 @@ let cancelRequested = false
 
 ipcMain.handle('cancel-processing', () => {
   cancelRequested = true
+})
+
+// Encodes a handful of representative files to memory so the UI can project the
+// batch before the user commits to it. Nothing is written.
+ipcMain.handle('estimate-sizes', async (_event, args) => {
+  const { files, resize, output } = parseEstimateRequest(args)
+  return estimateSizes(files, resize, output)
 })
 
 ipcMain.handle('process-images', async (event, args) => {

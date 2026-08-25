@@ -134,6 +134,31 @@ describe('createOutputPathReserver', () => {
     expect(reserve('photo', 'webp')).toBe(path.resolve('/out/photo.webp'))
   })
 
+  it('treats names differing only by case as one file', () => {
+    // APFS and NTFS both fold case by default, so `Photo.jpg` and `photo.jpg`
+    // are a single file — reserving them separately loses one of the two.
+    const reserve = reserverWith([])
+    expect(reserve('Photo', 'jpg')).toBe(path.resolve('/out/Photo.jpg'))
+    expect(reserve('photo', 'jpg')).toBe(path.resolve('/out/photo-1.jpg'))
+  })
+
+  it('treats Unicode normalisation forms of one name as one file', () => {
+    // macOS folds NFC and NFD, so a Hangul filename saved by two different apps
+    // collides even though the JS strings differ.
+    const reserve = reserverWith([])
+    const nfc = '사진'.normalize('NFC')
+    const nfd = '사진'.normalize('NFD')
+    expect(nfc).not.toBe(nfd)
+    expect(reserve(nfc, 'jpg')).toBe(path.resolve(`/out/${nfc}.jpg`))
+    expect(reserve(nfd, 'jpg')).toBe(path.resolve(`/out/${nfd}-1.jpg`))
+  })
+
+  it('keeps the original spelling in the returned path', () => {
+    // Only the collision *key* is normalised; the file is written as named.
+    const reserve = reserverWith([])
+    expect(reserve('MiXeD', 'jpg')).toBe(path.resolve('/out/MiXeD.jpg'))
+  })
+
   it('allows a leading ".." in a legitimate filename', () => {
     // `path.relative` returns "..backup.jpg" here, which a naive startsWith('..')
     // containment check would reject even though it stays inside the folder.

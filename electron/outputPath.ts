@@ -71,6 +71,19 @@ function assertInside(dir: string, target: string): void {
 /** Guards against a pathological name spinning the de-duplication loop forever. */
 const MAX_NAME_ATTEMPTS = 10_000
 
+/**
+ * Key for the "already reserved" check. Two distinct strings can be one file:
+ * macOS (APFS/HFS+ by default) and Windows both fold case, and macOS also folds
+ * Unicode normalisation — a Hangul name written NFC and NFD is a single file.
+ * Both were confirmed on this project's own target before relying on them.
+ *
+ * `fileExists` already resolves this against the real filesystem; only the
+ * in-batch set needs its own normalisation. Applied unconditionally rather than
+ * per-platform: on a case-sensitive volume this costs at worst a needless `-1`
+ * suffix, while missing a collision costs a file.
+ */
+const reservationKey = (p: string) => p.normalize('NFC').toLowerCase()
+
 export type ReserveOutputPath = (name: string, ext: string) => string | null
 
 /**
@@ -95,7 +108,7 @@ export function createOutputPathReserver(
   const dir = path.resolve(outputDir)
   const reserved = new Set<string>()
 
-  const taken = (p: string) => reserved.has(p) || (policy !== 'overwrite' && fileExists(p))
+  const taken = (p: string) => reserved.has(reservationKey(p)) || (policy !== 'overwrite' && fileExists(p))
 
   return function reserve(name, ext) {
     const target = path.join(dir, `${name}.${ext}`)
@@ -104,14 +117,14 @@ export function createOutputPathReserver(
     if (policy === 'skip' && fileExists(target)) return null
 
     if (!taken(target)) {
-      reserved.add(target)
+      reserved.add(reservationKey(target))
       return target
     }
 
     for (let n = 1; n <= MAX_NAME_ATTEMPTS; n++) {
       const candidate = path.join(dir, `${name}-${n}.${ext}`)
       if (!taken(candidate)) {
-        reserved.add(candidate)
+        reserved.add(reservationKey(candidate))
         return candidate
       }
     }

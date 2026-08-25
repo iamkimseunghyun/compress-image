@@ -100,8 +100,17 @@ export default function App() {
       }
     })
 
-    const added = infos.filter((f) => !knownPaths.current.has(f.path))
+    // Reserve as we go: the same path can appear twice in one drop, and two
+    // rapid drops overlap because this handler awaits before setFiles commits
+    // (knownPaths only catches up on the next render).
+    const seenPaths = new Set(knownPaths.current)
+    const added = infos.filter((f) => {
+      if (seenPaths.has(f.path)) return false
+      seenPaths.add(f.path)
+      return true
+    })
     const duplicates = infos.length - added.length
+    knownPaths.current = seenPaths
 
     if (added.length) {
       setFiles((prev) => {

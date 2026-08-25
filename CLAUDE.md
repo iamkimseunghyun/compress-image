@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Electron desktop app for batch image resizing and compression. Uses Sharp (libvips) for high-performance image processing with support for JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG, HEIF formats.
+Electron desktop app for batch image resizing and compression. Uses Sharp (libvips) for high-performance image processing.
+
+**Input**: JPEG, PNG, WebP, AVIF, TIFF, GIF, SVG. Not HEIC/HEIF — the prebuilt libvips carries no HEVC decoder, so `sharp.format.heif` reports `.avif` as its only readable suffix. The accepted list is derived at runtime rather than hard-coded (see Architecture).
+**Output**: JPEG, PNG, WebP, AVIF, TIFF, GIF. SVG input rasterises to PNG.
 
 ## Commands
 

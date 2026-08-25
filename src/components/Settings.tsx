@@ -54,8 +54,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         <h3>리사이즈</h3>
 
         <div className="setting-row">
-          <label>모드</label>
+          <label htmlFor="resize-mode">모드</label>
           <select
+            id="resize-mode"
             value={resize.mode}
             onChange={(e) => onResizeChange({ ...resize, mode: e.target.value as ResizeOptions['mode'] })}
           >
@@ -67,8 +68,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
 
         {resize.mode === 'percentage' && (
           <div className="setting-row">
-            <label>{resize.percentage}%</label>
+            <label htmlFor="resize-percentage">{resize.percentage}%</label>
             <input
+              id="resize-percentage"
               type="range"
               min={5}
               max={100}
@@ -82,8 +84,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         {resize.mode === 'dimensions' && (
           <>
             <div className="setting-row">
-              <label>가로 (px)</label>
+              <label htmlFor="resize-width">가로 (px)</label>
               <input
+                id="resize-width"
                 type="number"
                 min={1}
                 max={20000}
@@ -92,8 +95,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
               />
             </div>
             <div className="setting-row">
-              <label>세로 (px)</label>
+              <label htmlFor="resize-height">세로 (px)</label>
               <input
+                id="resize-height"
                 type="number"
                 min={1}
                 max={20000}
@@ -106,8 +110,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
 
         {resize.mode !== 'none' && (
           <div className="setting-row">
-            <label>맞춤 방식</label>
+            <label htmlFor="resize-fit">맞춤 방식</label>
             <select
+              id="resize-fit"
               value={resize.fit}
               onChange={(e) => onResizeChange({ ...resize, fit: e.target.value as ResizeOptions['fit'] })}
             >
@@ -143,8 +148,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         <h3>출력 설정</h3>
 
         <div className="setting-row">
-          <label>포맷</label>
+          <label htmlFor="output-format">포맷</label>
           <select
+            id="output-format"
             value={output.format}
             onChange={(e) => onOutputChange({ ...output, format: e.target.value as OutputOptions['format'] })}
           >
@@ -155,8 +161,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
-          <label>압축 강도</label>
+          <label htmlFor="output-compression">압축 강도</label>
           <select
+            id="output-compression"
             value={output.compression}
             onChange={(e) =>
               onOutputChange({ ...output, compression: e.target.value as OutputOptions['compression'] })
@@ -170,8 +177,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
-          <label>품질 {output.quality}%</label>
+          <label htmlFor="output-quality">품질 {output.quality}%</label>
           <input
+            id="output-quality"
             type="range"
             min={1}
             max={100}
@@ -195,8 +203,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
 
         {output.palette ? (
           <div className="setting-row">
-            <label>최대 색상 수</label>
+            <label htmlFor="palette-colours">최대 색상 수</label>
             <select
+              id="palette-colours"
               value={output.paletteColours}
               onChange={(e) =>
                 onOutputChange({ ...output, paletteColours: Number(e.target.value) })
@@ -213,8 +222,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         )}
 
         <div className="setting-row">
-          <label>새 파일명 (이름 바꾸기)</label>
+          <label htmlFor="filename-base">새 파일명 (이름 바꾸기)</label>
           <input
+            id="filename-base"
             type="text"
             placeholder="비워두면 원본 이름 유지"
             value={output.filenameBase ?? ''}
@@ -224,8 +234,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
 
         {renaming && (
           <div className="setting-row">
-            <label>번호 자릿수</label>
+            <label htmlFor="number-padding">번호 자릿수</label>
             <input
+              id="number-padding"
               type="number"
               min={1}
               max={6}
@@ -238,8 +249,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         )}
 
         <div className="setting-row">
-          <label>파일명 접두사</label>
+          <label htmlFor="filename-prefix">파일명 접두사</label>
           <input
+            id="filename-prefix"
             type="text"
             placeholder="예: resized_"
             value={output.filenamePrefix}
@@ -249,8 +261,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
-          <label>파일명 접미사</label>
+          <label htmlFor="filename-suffix">파일명 접미사</label>
           <input
+            id="filename-suffix"
             type="text"
             placeholder="예: _compressed"
             value={output.filenameSuffix}
@@ -265,8 +278,9 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
-          <label>같은 이름이 있을 때</label>
+          <label htmlFor="on-conflict">같은 이름이 있을 때</label>
           <select
+            id="on-conflict"
             value={output.onConflict}
             onChange={(e) =>
               onOutputChange({ ...output, onConflict: e.target.value as OutputOptions['onConflict'] })
@@ -282,8 +296,8 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         </div>
 
         <div className="setting-row">
-          <label>출력 폴더</label>
-          <button className="btn-select-dir" onClick={onSelectOutputDir}>
+          <label htmlFor="output-dir">출력 폴더</label>
+          <button id="output-dir" className="btn-select-dir" onClick={onSelectOutputDir}>
             {output.outputDir || '폴더 선택...'}
           </button>
         </div>

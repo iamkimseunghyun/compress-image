@@ -6,6 +6,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import type { ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress, ImageFileInfo } from '../src/types'
+import { buildOutputName, createOutputPathReserver, getExtension, type ReserveOutputPath } from './outputPath'
 
 // Formats Sharp can encode. Sources outside this set (e.g. svg, heif) can be
 // read but not always re-encoded, so 'original' falls back to png for them.
@@ -53,6 +54,23 @@ const FORMAT_OPTIONS: Record<OutputOptions['compression'], Record<WritableFormat
 // concurrency on top.
 const MAX_CONCURRENCY = 8
 
+// Input formats the app means to accept. The actual extension list is derived
+// from what this build of Sharp reports as readable, so it can never advertise
+// something that fails on open: the prebuilt binaries carry no HEVC decoder, so
+// `heif` contributes only `.avif` and .heic/.heif correctly drop out.
+// AVIF has no entry of its own — libvips reads it through `heif`, which is also
+// why .heic/.heif drop out: this build's libheif carries no HEVC decoder, so
+// `heif` reports `.avif` as its only readable suffix.
+const INTENDED_INPUT_FORMATS = ['jpeg', 'png', 'webp', 'tiff', 'gif', 'svg', 'heif'] as const
+
+export function getSupportedExtensions(): string[] {
+  const suffixes = INTENDED_INPUT_FORMATS.flatMap((name) => {
+    const format = sharp.format[name]
+    return format?.input?.file ? format.input.fileSuffix ?? [] : []
+  })
+  return [...new Set(suffixes.map((s) => s.replace(/^\./, '').toLowerCase()))].sort()
+}
+
 export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
   const metadata = await sharp(filePath).metadata()
   const stats = fs.statSync(filePath)
@@ -79,6 +97,9 @@ export async function processImages(
   // Preserve input order in results; each file keeps its original index so the
   // rename auto-numbering stays deterministic regardless of completion order.
   const results: ProcessingResult[] = new Array(files.length)
+  // One reserver per batch so concurrent workers can never be handed the same
+  // write target. Created up front because it is shared mutable state.
+  const reserveOutputPath = createOutputPathReserver(output.outputDir, output.onConflict)
   // os.cpus() can return an empty array in some restricted environments.
   const cpuCount = os.cpus()?.length || 1
   const concurrency = Math.max(1, Math.min(files.length, cpuCount, MAX_CONCURRENCY))
@@ -97,7 +118,7 @@ export async function processImages(
 
       const filePath = files[i]
       try {
-        results[i] = await processSingleImage(filePath, resize, output, i)
+        results[i] = await processSingleImage(filePath, resize, output, i, reserveOutputPath)
       } catch (err) {
         results[i] = {
           inputPath: filePath,
@@ -130,6 +151,7 @@ async function processSingleImage(
   resize: ResizeOptions,
   output: OutputOptions,
   index: number,
+  reserveOutputPath: ReserveOutputPath,
 ): Promise<ProcessingResult> {
   const originalStats = fs.statSync(filePath)
   // autoOrient bakes the EXIF Orientation into the pixels. Without it every
@@ -180,9 +202,22 @@ async function processSingleImage(
   pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile()
 
   // ── Output Path ──
-  const ext = getExtension(targetFormat)
-  const outputName = buildOutputName(filePath, output, index)
-  const outputPath = path.join(output.outputDir, `${outputName}.${ext}`)
+  // Reserved synchronously, before any await, so two workers producing the same
+  // name cannot be handed the same path and race on the write.
+  const outputPath = reserveOutputPath(buildOutputName(filePath, output, index), getExtension(targetFormat))
+
+  if (outputPath === null) {
+    return {
+      inputPath: filePath,
+      outputPath: '',
+      originalSize: originalStats.size,
+      processedSize: 0,
+      width: 0,
+      height: 0,
+      success: false,
+      skipped: true,
+    }
+  }
 
   // Ensure output directory exists
   fs.mkdirSync(output.outputDir, { recursive: true })
@@ -200,23 +235,6 @@ async function processSingleImage(
   }
 }
 
-function buildOutputName(filePath: string, output: OutputOptions, index: number): string {
-  const base = (output.filenameBase ?? '').trim()
-
-  // Full-rename mode: `{base}_{number}` with zero-padding. Prefix/suffix are ignored.
-  if (base !== '') {
-    const padding = output.numberPadding > 0 ? output.numberPadding : 3
-    const number = String(index + 1).padStart(padding, '0')
-    return `${base}_${number}`
-  }
-
-  // Default mode: keep original name, decorate with prefix/suffix.
-  const original = path.basename(filePath, path.extname(filePath))
-  const prefix = output.filenamePrefix ?? ''
-  const suffix = output.filenameSuffix ?? '_compressed'
-  return `${prefix}${original}${suffix}`
-}
-
 /**
  * Dimensions after EXIF Orientation is applied. Sharp exposes these separately
  * because `metadata.width`/`height` always describe the stored pixel buffer,
@@ -230,14 +248,3 @@ function orientedSize(metadata: Metadata): { width: number; height: number } {
   }
 }
 
-function getExtension(format: string): string {
-  const map: Record<string, string> = {
-    jpeg: 'jpg',
-    png: 'png',
-    webp: 'webp',
-    avif: 'avif',
-    tiff: 'tiff',
-    gif: 'gif',
-  }
-  return map[format] ?? format
-}

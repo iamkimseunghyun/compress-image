@@ -37,6 +37,13 @@ export interface OutputOptions {
   palette: boolean
   /** Maximum palette entries when `palette` is on, 2-256. */
   paletteColours: number
+  /**
+   * What to do when the computed output file already exists.
+   * 'number' appends `-1`, `-2`, …; 'overwrite' replaces results from earlier
+   * runs; 'skip' leaves the existing file alone. Names are always de-duplicated
+   * *within* a batch regardless, so one run can never clobber its own output.
+   */
+  onConflict: 'number' | 'overwrite' | 'skip'
   outputDir: string
   /** When set, fully renames output to `{filenameBase}_{number}` (prefix/suffix ignored). Empty = keep original name. */
   filenameBase: string
@@ -54,6 +61,8 @@ export interface ProcessingResult {
   width: number
   height: number
   success: boolean
+  /** Output already existed and `onConflict` is 'skip'; not an error. */
+  skipped?: boolean
   error?: string
 }
 
@@ -67,6 +76,8 @@ export interface ElectronAPI {
   selectFiles: () => Promise<string[]>
   selectOutputDir: () => Promise<string | null>
   getImageInfo: (filePath: string) => Promise<ImageFileInfo>
+  /** Extensions this build of Sharp can actually decode, without the leading dot. */
+  getSupportedExtensions: () => Promise<string[]>
   getPathForFile: (file: File) => string
   processImages: (
     files: string[],

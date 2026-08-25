@@ -1,11 +1,24 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ImageFileInfo, ResizeOptions, OutputOptions, ProcessingResult, ProcessingProgress } from './types'
 import { DropZone } from './components/DropZone'
 import { ImageList } from './components/ImageList'
 import { Settings } from './components/Settings'
 import { ResultsView } from './components/ResultsView'
+import { describeIpcError } from './utils/ipcError'
 
 type AppState = 'idle' | 'processing' | 'done'
+
+/** Files the last add attempt could not use, so they don't vanish silently. */
+interface AddNotice {
+  failed: { name: string; reason: string }[]
+  duplicates: number
+}
+
+const MAX_LISTED_FAILURES = 5
+
+function basename(filePath: string): string {
+  return filePath.split(/[/\\]/).pop() ?? filePath
+}
 
 export default function App() {
   const [files, setFiles] = useState<ImageFileInfo[]>([])
@@ -13,6 +26,16 @@ export default function App() {
   const [progress, setProgress] = useState<ProcessingProgress>({ current: 0, total: 0, currentFile: '' })
   const [results, setResults] = useState<ProcessingResult[]>([])
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [extensions, setExtensions] = useState<string[]>([])
+  const [notice, setNotice] = useState<AddNotice | null>(null)
+
+  // Mirrors the current paths so the add handler can count duplicates without
+  // doing that bookkeeping inside a setState updater (updaters run twice under
+  // StrictMode, so they must stay free of side effects).
+  const knownPaths = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    knownPaths.current = new Set(files.map((f) => f.path))
+  }, [files])
 
   const [resize, setResize] = useState<ResizeOptions>({
     mode: 'percentage',
@@ -29,6 +52,7 @@ export default function App() {
     compression: 'max',
     palette: false,
     paletteColours: 256,
+    onConflict: 'number',
     outputDir: '',
     filenameBase: '',
     numberPadding: 3,
@@ -39,6 +63,10 @@ export default function App() {
   useEffect(() => {
     const cleanup = window.api.onProgress(setProgress)
     return cleanup
+  }, [])
+
+  useEffect(() => {
+    window.api.getSupportedExtensions().then(setExtensions).catch(() => setExtensions([]))
   }, [])
 
   // Prevent Electron default file-open behavior on drag/drop
@@ -57,16 +85,32 @@ export default function App() {
 
   const addFilesByPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
-    // Skip files that fail to read (corrupt/unsupported) instead of aborting the whole batch.
+    // Read failures (corrupt or undecodable) skip the file rather than aborting
+    // the whole batch — but they get reported, otherwise files just disappear
+    // from the list with no explanation.
     const settled = await Promise.allSettled(paths.map((p) => window.api.getImageInfo(p)))
-    const infos = settled
-      .filter((r): r is PromiseFulfilledResult<ImageFileInfo> => r.status === 'fulfilled')
-      .map((r) => r.value)
-    setFiles((prev) => {
-      const existingPaths = new Set(prev.map((f) => f.path))
-      const newFiles = infos.filter((f) => !existingPaths.has(f.path))
-      return [...prev, ...newFiles]
+
+    const infos: ImageFileInfo[] = []
+    const failed: AddNotice['failed'] = []
+    settled.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        infos.push(result.value)
+      } else {
+        failed.push({ name: basename(paths[i]), reason: describeIpcError(result.reason) })
+      }
     })
+
+    const added = infos.filter((f) => !knownPaths.current.has(f.path))
+    const duplicates = infos.length - added.length
+
+    if (added.length) {
+      setFiles((prev) => {
+        const existingPaths = new Set(prev.map((f) => f.path))
+        return [...prev, ...added.filter((f) => !existingPaths.has(f.path))]
+      })
+    }
+
+    setNotice(failed.length || duplicates ? { failed, duplicates } : null)
   }, [])
 
   const handleAddFiles = useCallback(async () => {
@@ -85,6 +129,7 @@ export default function App() {
   const handleClearFiles = useCallback(() => {
     setFiles([])
     setResults([])
+    setNotice(null)
     setState('idle')
   }, [])
 
@@ -134,7 +179,13 @@ export default function App() {
         ) : (
           <>
             <div className="panel-left">
-              <DropZone onAddFiles={handleAddFiles} onDropFiles={handleDropFiles} fileCount={files.length} />
+              <DropZone
+                onAddFiles={handleAddFiles}
+                onDropFiles={handleDropFiles}
+                fileCount={files.length}
+                extensions={extensions}
+              />
+              {notice && <AddNoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
               <ImageList
                 files={files}
                 onRemove={handleRemoveFile}
@@ -184,6 +235,35 @@ export default function App() {
             </button>
           )}
         </footer>
+      )}
+    </div>
+  )
+}
+
+function AddNoticeBanner({ notice, onDismiss }: { notice: AddNotice; onDismiss: () => void }) {
+  const { failed, duplicates } = notice
+  const parts: string[] = []
+  if (failed.length) parts.push(`${failed.length}개를 읽지 못했습니다`)
+  if (duplicates) parts.push(`${duplicates}개는 이미 목록에 있습니다`)
+
+  return (
+    <div className="notice" role="status">
+      <div className="notice-head">
+        <span>{parts.join(' · ')}</span>
+        <button className="btn-text" onClick={onDismiss}>닫기</button>
+      </div>
+      {failed.length > 0 && (
+        <ul className="notice-list">
+          {failed.slice(0, MAX_LISTED_FAILURES).map((f) => (
+            <li key={f.name}>
+              <span className="notice-file">{f.name}</span>
+              <span className="notice-reason">{f.reason}</span>
+            </li>
+          ))}
+          {failed.length > MAX_LISTED_FAILURES && (
+            <li className="notice-more">외 {failed.length - MAX_LISTED_FAILURES}개</li>
+          )}
+        </ul>
       )}
     </div>
   )

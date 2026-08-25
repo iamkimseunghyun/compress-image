@@ -1,27 +1,10 @@
 import type { ProcessingResult } from '../types'
+import { formatDuration, formatSize } from '../utils/format'
 
 interface ResultsViewProps {
   results: ProcessingResult[]
   elapsedMs: number
   onReset: () => void
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  const totalSeconds = ms / 1000
-  // Below the 60s rounding boundary, show one decimal (e.g. 12.3초).
-  if (totalSeconds < 59.95) return `${totalSeconds.toFixed(1)}초`
-  // Round to whole seconds first so we never produce "1분 60초".
-  const roundedSeconds = Math.round(totalSeconds)
-  const minutes = Math.floor(roundedSeconds / 60)
-  const seconds = roundedSeconds % 60
-  return `${minutes}분 ${seconds}초`
 }
 
 function basename(filePath: string): string {
@@ -30,7 +13,10 @@ function basename(filePath: string): string {
 
 export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
   const succeeded = results.filter((r) => r.success)
-  const failed = results.filter((r) => !r.success)
+  // Skipped files are reported as not-success so they stay out of the size
+  // totals, but they are a deliberate outcome rather than a failure.
+  const skipped = results.filter((r) => r.skipped)
+  const failed = results.filter((r) => !r.success && !r.skipped)
   const totalOriginal = succeeded.reduce((sum, r) => sum + r.originalSize, 0)
   const totalProcessed = succeeded.reduce((sum, r) => sum + r.processedSize, 0)
   const savedPercent = totalOriginal > 0
@@ -46,6 +32,12 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
             <span className="stat-value">{succeeded.length}</span>
             <span className="stat-label">성공</span>
           </div>
+          {skipped.length > 0 && (
+            <div className="stat">
+              <span className="stat-value">{skipped.length}</span>
+              <span className="stat-label">건너뜀</span>
+            </div>
+          )}
           {failed.length > 0 && (
             <div className="stat stat-error">
               <span className="stat-value">{failed.length}</span>
@@ -75,13 +67,18 @@ export function ResultsView({ results, elapsedMs, onReset }: ResultsViewProps) {
 
       <ul className="results-list">
         {results.map((r, i) => (
-          <li key={`${r.inputPath}-${i}`} className={`result-item ${r.success ? '' : 'result-error'}`}>
+          <li
+            key={`${r.inputPath}-${i}`}
+            className={`result-item ${r.success || r.skipped ? '' : 'result-error'}`}
+          >
             <span className="result-name">{basename(r.inputPath)}</span>
             {r.success ? (
               <span className="result-meta">
                 {formatSize(r.originalSize)} → {formatSize(r.processedSize)}
                 {' '}({r.width}×{r.height})
               </span>
+            ) : r.skipped ? (
+              <span className="result-meta">같은 이름의 파일이 있어 건너뜀</span>
             ) : (
               <span className="result-meta result-error-text">{r.error}</span>
             )}

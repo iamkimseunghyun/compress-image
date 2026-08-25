@@ -18,6 +18,12 @@ const FIT_OPTIONS: { value: ResizeOptions['fit']; label: string }[] = [
 
 const PALETTE_COLOUR_OPTIONS = [256, 128, 64, 32]
 
+const CONFLICT_OPTIONS: { value: OutputOptions['onConflict']; label: string; hint: string }[] = [
+  { value: 'number', label: '번호 붙이기', hint: '기존 파일을 그대로 두고 이름 뒤에 -1, -2를 붙입니다' },
+  { value: 'overwrite', label: '덮어쓰기', hint: '이전 작업 결과를 새 결과로 바꿉니다' },
+  { value: 'skip', label: '건너뛰기', hint: '이미 있는 파일은 처리하지 않습니다' },
+]
+
 const COMPRESSION_OPTIONS: { value: OutputOptions['compression']; label: string; hint: string }[] = [
   { value: 'max', label: '최대 압축', hint: '파일이 가장 작지만 느립니다' },
   { value: 'fast', label: '빠른 압축', hint: '몇 배 빠르지만 파일이 15~40% 큽니다' },
@@ -256,6 +262,23 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
         <div className="filename-preview">
           <span className="preview-label">미리보기:</span>
           <code>{filenamePreview}</code>
+        </div>
+
+        <div className="setting-row">
+          <label>같은 이름이 있을 때</label>
+          <select
+            value={output.onConflict}
+            onChange={(e) =>
+              onOutputChange({ ...output, onConflict: e.target.value as OutputOptions['onConflict'] })
+            }
+          >
+            {CONFLICT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="setting-hint">
+            {CONFLICT_OPTIONS.find((o) => o.value === output.onConflict)?.hint ?? ''}
+          </p>
         </div>
 
         <div className="setting-row">

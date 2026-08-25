@@ -4,7 +4,7 @@ import './threadpool'
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
-import { processImages, getImageInfo } from './imageProcessor'
+import { processImages, getImageInfo, getSupportedExtensions } from './imageProcessor'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged
@@ -64,18 +64,16 @@ app.on('activate', () => {
 
 // ── IPC Handlers ──
 
+// Derived from Sharp's own capabilities rather than hard-coded, so the dialog
+// filter and the drop zone can never offer a format that fails on open.
+const supportedExtensions = getSupportedExtensions()
+
+ipcMain.handle('get-supported-extensions', () => supportedExtensions)
+
 ipcMain.handle('select-files', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile', 'multiSelections'],
-    filters: [
-      {
-        name: 'Images',
-        extensions: [
-          'jpg', 'jpeg', 'png', 'webp', 'avif',
-          'tiff', 'tif', 'gif', 'svg', 'heif', 'heic',
-        ],
-      },
-    ],
+    filters: [{ name: 'Images', extensions: supportedExtensions }],
   })
   return result.filePaths
 })

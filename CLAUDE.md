@@ -11,6 +11,7 @@ Electron desktop app for batch image resizing and compression. Uses Sharp (libvi
 ```bash
 npm run dev       # Start Vite dev server + Electron (hot reload)
 npm run typecheck # tsc --noEmit for both renderer (tsconfig.json) and electron/vite (tsconfig.node.json)
+npm test          # vitest run (pure-function unit tests; config is vitest.config.ts, NOT vite.config.ts)
 npm run build     # typecheck + Vite production build (renderer + main + preload)
 npm run package   # Build + create platform installer (electron-builder)
 ```
@@ -25,9 +26,15 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 - `electron/main.ts` — Electron main process: window creation, IPC handlers for file dialogs and image processing
 - `electron/preload.ts` — Context bridge exposing `window.api` to renderer (contextIsolation enabled)
 - `electron/imageProcessor.ts` — Sharp-based processing: resize, format conversion, quality control, batch execution with progress callbacks
+- `electron/outputPath.ts` — filename sanitising, extension mapping, and per-batch output path reservation (collision handling). Pure and unit-tested
+- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages), unit-tested
 - `src/` — React renderer (Vite-bundled): App state manages file list, settings, processing lifecycle
 
-**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `process-images`, `process-progress` (main→renderer)
+**IPC channels**: `select-files`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `process-images`, `process-progress` (main→renderer)
+
+Accepted input extensions are derived at runtime from `sharp.format` rather than hard-coded, so the file dialog and drop zone cannot advertise a format this build cannot decode (the prebuilt libvips has no HEVC decoder, so `.heic`/`.heif` are correctly absent).
+
+`vitest.config.ts` exists separately because `vite.config.ts` loads `vite-plugin-electron`, which would spawn Electron on every test run.
 
 **Build pipeline** — `vite-plugin-electron` compiles both main and preload TS into `dist-electron/`, while Vite builds renderer to `dist/`. Sharp is externalized from the bundle as a native module.
 

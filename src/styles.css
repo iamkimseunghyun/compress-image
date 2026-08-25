@@ -361,6 +361,63 @@ body {
   accent-color: var(--accent);
 }
 
+/* ── Add Notice ── */
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+
+.notice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+}
+
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  max-height: 108px;
+  overflow-y: auto;
+}
+
+.notice-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.notice-file {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.notice-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-more {
+  color: var(--text-dim);
+}
+
 /* ── Progress Bar ── */
 
 .progress-bar-container {

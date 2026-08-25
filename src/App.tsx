@@ -127,14 +127,24 @@ export default function App() {
     setNotice(failed.length || duplicates ? { failed, duplicates } : null)
   }, [])
 
-  const handleAddFiles = useCallback(async () => {
-    const paths = await window.api.selectFiles()
-    addFilesByPaths(paths)
+  // Everything funnels through expandPaths: it walks folders and drops files
+  // this build cannot decode, so the renderer never has to know either.
+  const addExpanded = useCallback(async (paths: string[]) => {
+    if (!paths.length) return
+    addFilesByPaths(await window.api.expandPaths(paths))
   }, [addFilesByPaths])
 
+  const handleAddFiles = useCallback(async () => {
+    addExpanded(await window.api.selectFiles())
+  }, [addExpanded])
+
+  const handleAddFolder = useCallback(async () => {
+    addExpanded(await window.api.selectDirectory())
+  }, [addExpanded])
+
   const handleDropFiles = useCallback((paths: string[]) => {
-    addFilesByPaths(paths)
-  }, [addFilesByPaths])
+    addExpanded(paths)
+  }, [addExpanded])
 
   const handleRemoveFile = useCallback((filePath: string) => {
     setFiles((prev) => prev.filter((f) => f.path !== filePath))
@@ -170,7 +180,9 @@ export default function App() {
     } catch (err) {
       // Unexpected IPC/processing failure — surface it and return to idle instead of hanging.
       console.error('Image processing failed:', err)
-      alert(`이미지 처리 중 오류가 발생했습니다.\n${err instanceof Error ? err.message : String(err)}`)
+      // A native dialog rather than alert(), which blocks the renderer and looks
+      // foreign in a desktop app.
+      window.api.showError('이미지 처리 실패', describeIpcError(err))
       setState('idle')
     } finally {
       setCancelling(false)
@@ -202,6 +214,7 @@ export default function App() {
             results={results}
             elapsedMs={elapsedMs}
             total={batchTotal}
+            outputDir={output.outputDir}
             onReset={handleReset}
           />
         ) : (
@@ -211,6 +224,7 @@ export default function App() {
             <div className="panel-left" inert={state === 'processing'}>
               <DropZone
                 onAddFiles={handleAddFiles}
+                onAddFolder={handleAddFolder}
                 onDropFiles={handleDropFiles}
                 fileCount={files.length}
                 extensions={extensions}

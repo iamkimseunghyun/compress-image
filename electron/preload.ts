@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('api', {
   getImageInfo: (filePath: string) => ipcRenderer.invoke('get-image-info', filePath),
   getSupportedExtensions: () => ipcRenderer.invoke('get-supported-extensions'),
   directoryExists: (dir: string) => ipcRenderer.invoke('directory-exists', dir),
+  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+  expandPaths: (paths: string[]) => ipcRenderer.invoke('expand-paths', paths),
+  openPath: (target: string) => ipcRenderer.invoke('open-path', target),
+  showItemInFolder: (target: string) => ipcRenderer.invoke('show-item-in-folder', target),
+  showError: (title: string, message: string) => ipcRenderer.invoke('show-error', title, message),
   cancelProcessing: () => ipcRenderer.invoke('cancel-processing'),
   processImages: (files: string[], resize: ResizeOptions, output: OutputOptions) =>
     ipcRenderer.invoke('process-images', { files, resize, output }),

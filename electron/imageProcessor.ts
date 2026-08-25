@@ -54,6 +54,16 @@ const FORMAT_OPTIONS: Record<OutputOptions['compression'], Record<WritableFormat
 // concurrency on top.
 const MAX_CONCURRENCY = 8
 
+/** Edge length of the preview shown in the file list. */
+const THUMBNAIL_PX = 96
+
+/**
+ * Ceiling on a single image. A truncated or adversarially crafted file can send
+ * libvips into work that never finishes, which would pin one of the eight
+ * workers for the rest of the batch.
+ */
+const PER_IMAGE_TIMEOUT_S = 120
+
 // Input formats the app means to accept. The actual extension list is derived
 // from what this build of Sharp reports as readable, so it can never advertise
 // something that fails on open: the prebuilt binaries carry no HEVC decoder, so
@@ -85,6 +95,33 @@ export async function getImageInfo(filePath: string): Promise<ImageFileInfo> {
     width: oriented.width,
     height: oriented.height,
     format: metadata.format ?? 'unknown',
+    thumbnail: await renderThumbnail(filePath, metadata.format),
+  }
+}
+
+/**
+ * A small preview for the file list, inlined as a data URI so the renderer needs
+ * no filesystem access. Failure is not worth surfacing — the list simply shows
+ * no image — so a broken thumbnail never blocks adding a valid file.
+ */
+async function renderThumbnail(filePath: string, format: string | undefined): Promise<string | undefined> {
+  try {
+    const buffer = await sharp(filePath, {
+      autoOrient: true,
+      // Only useful here. libvips rasterises an SVG at its declared size, and
+      // withoutEnlargement then refuses to scale it up, so a 32px icon would
+      // yield a 32px thumbnail in a 96px box; doubling the density gives 64px.
+      // The main pipeline needs no equivalent — Sharp re-renders the vector at
+      // the resize target, so its output is already sharp at any size.
+      density: format === 'svg' ? 144 : undefined,
+    })
+      .resize(THUMBNAIL_PX, THUMBNAIL_PX, { fit: 'cover', withoutEnlargement: true })
+      .webp({ quality: 60 })
+      .timeout({ seconds: 10 })
+      .toBuffer()
+    return `data:image/webp;base64,${buffer.toString('base64')}`
+  } catch {
+    return undefined
   }
 }
 
@@ -215,7 +252,7 @@ async function processSingleImage(
 
   // keepIccProfile carries the source colour profile through. Without it a
   // Display P3 photo is written as untagged sRGB and visibly shifts hue.
-  pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile()
+  pipeline = pipeline.toFormat(targetFormat, formatOpts).keepIccProfile().timeout({ seconds: PER_IMAGE_TIMEOUT_S })
 
   // ── Output Path ──
   // Reserved synchronously, before any await, so two workers producing the same

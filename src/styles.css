@@ -397,6 +397,61 @@ body {
   accent-color: var(--accent);
 }
 
+.image-thumb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.image-thumb-empty {
+  display: block;
+  border: 1px dashed var(--border);
+}
+
+.dropzone-folder {
+  margin-top: 8px;
+}
+
+.results-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.results-actions .btn-process {
+  flex: 1;
+}
+
+.btn-secondary {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.result-reveal {
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.result-item:hover .result-reveal,
+.result-reveal:focus-visible {
+  opacity: 1;
+}
+
 /* ── Add Notice ── */
 
 .notice {

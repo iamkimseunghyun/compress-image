@@ -6,6 +6,7 @@ interface ResultsViewProps {
   elapsedMs: number
   /** Files the batch started with; larger than `results` when it was cancelled. */
   total: number
+  outputDir: string
   onReset: () => void
 }
 
@@ -13,7 +14,7 @@ function basename(filePath: string): string {
   return filePath.split(/[/\\]/).pop() ?? filePath
 }
 
-export function ResultsView({ results, elapsedMs, total, onReset }: ResultsViewProps) {
+export function ResultsView({ results, elapsedMs, total, outputDir, onReset }: ResultsViewProps) {
   const notProcessed = Math.max(0, total - results.length)
   const succeeded = results.filter((r) => r.success)
   // Skipped files are reported as not-success so they stay out of the size
@@ -81,10 +82,19 @@ export function ResultsView({ results, elapsedMs, total, onReset }: ResultsViewP
           >
             <span className="result-name">{basename(r.inputPath)}</span>
             {r.success ? (
-              <span className="result-meta">
-                {formatSize(r.originalSize)} → {formatSize(r.processedSize)}
-                {' '}({r.width}×{r.height})
-              </span>
+              <>
+                <span className="result-meta">
+                  {formatSize(r.originalSize)} → {formatSize(r.processedSize)}
+                  {' '}({r.width}×{r.height})
+                </span>
+                <button
+                  className="btn-text result-reveal"
+                  title="Finder에서 보기"
+                  onClick={() => window.api.showItemInFolder(r.outputPath)}
+                >
+                  위치
+                </button>
+              </>
             ) : r.skipped ? (
               <span className="result-meta">같은 이름의 파일이 있어 건너뜀</span>
             ) : (
@@ -94,9 +104,16 @@ export function ResultsView({ results, elapsedMs, total, onReset }: ResultsViewP
         ))}
       </ul>
 
-      <button className="btn-process" onClick={onReset}>
-        새로운 작업
-      </button>
+      <div className="results-actions">
+        {outputDir && (
+          <button className="btn-secondary" onClick={() => window.api.openPath(outputDir)}>
+            출력 폴더 열기
+          </button>
+        )}
+        <button className="btn-process" onClick={onReset}>
+          새로운 작업
+        </button>
+      </div>
     </div>
   )
 }

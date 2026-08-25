@@ -9,7 +9,8 @@
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "package": "npm run build && electron-builder",
-    "test": "vitest run"
+    "test": "vitest run",
+    "package:x64": "npm i --no-save --cpu=x64 --os=darwin sharp && npm run build && electron-builder --mac --x64"
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -50,6 +51,10 @@
     "linux": {
       "target": "AppImage",
       "icon": "build/icon.png"
-    }
+    },
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**"
+    ]
   }
 }

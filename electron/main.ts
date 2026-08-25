@@ -1,11 +1,13 @@
 // Must stay first: it sizes the libuv threadpool that Sharp's encoders run on,
 // and the pool's size is fixed the first time anything uses it.
 import './threadpool'
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { processImages, getImageInfo, getSupportedExtensions } from './imageProcessor'
 import { loadWindowState, trackWindowState } from './windowState'
+import { expandPaths } from './fileScan'
+import { parseProcessRequest } from './ipcValidation'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged
@@ -28,6 +30,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // The preload only needs contextBridge/ipcRenderer/webUtils, all of which
+      // a sandboxed preload still gets.
+      sandbox: true,
     },
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
@@ -38,6 +43,9 @@ function createWindow() {
 
   // Prevent Electron from navigating to dropped files
   mainWindow.webContents.on('will-navigate', (e) => e.preventDefault())
+  // Nothing in the UI opens a window; deny rather than leave the door open.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  mainWindow.on('closed', () => { mainWindow = null })
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
@@ -59,7 +67,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
-    mainWindow = null
   }
 })
 
@@ -83,6 +90,38 @@ ipcMain.handle('select-files', async () => {
     filters: [{ name: 'Images', extensions: supportedExtensions }],
   })
   return result.filePaths
+})
+
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'multiSelections'],
+  })
+  return result.filePaths
+})
+
+// Dropped or picked paths may be folders; walking them here keeps the renderer
+// free of filesystem access.
+ipcMain.handle('expand-paths', async (_event, paths: unknown) => {
+  if (!Array.isArray(paths)) return []
+  const inputs = paths.filter((p): p is string => typeof p === 'string' && p.length > 0)
+  return expandPaths(inputs, supportedExtensions)
+})
+
+ipcMain.handle('open-path', async (_event, target: string) => {
+  // openPath refuses anything outside a real filesystem entry, and returns a
+  // message rather than throwing.
+  return shell.openPath(target)
+})
+
+ipcMain.handle('show-item-in-folder', (_event, target: string) => {
+  shell.showItemInFolder(target)
+})
+
+ipcMain.handle('show-error', async (event, title: string, message: string) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const options = { type: 'error' as const, title, message, buttons: ['확인'] }
+  if (win) await dialog.showMessageBox(win, options)
+  else await dialog.showMessageBox(options)
 })
 
 ipcMain.handle('select-output-dir', async () => {
@@ -115,7 +154,9 @@ ipcMain.handle('cancel-processing', () => {
 })
 
 ipcMain.handle('process-images', async (event, args) => {
-  const { files, resize, output } = args
+  // The renderer coerces its own settings, but this process holds the
+  // file-writing privileges and must not depend on that.
+  const { files, resize, output } = parseProcessRequest(args)
   cancelRequested = false
 
   return processImages(

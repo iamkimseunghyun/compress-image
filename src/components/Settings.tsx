@@ -1,4 +1,5 @@
 import type { ResizeOptions, OutputOptions } from '../types'
+import { getExtension } from '../utils/imageFormats'
 
 interface SettingsProps {
   resize: ResizeOptions
@@ -43,9 +44,12 @@ export function Settings({ resize, output, onResizeChange, onOutputChange, onSel
   const renaming = (output.filenameBase ?? '').trim() !== ''
   const compressionHint =
     COMPRESSION_OPTIONS.find((o) => o.value === output.compression)?.hint ?? ''
-  const filenamePreview = renaming
-    ? `${(output.filenameBase ?? '').trim()}_${'1'.padStart(Math.max(1, output.numberPadding ?? 3), '0')}.jpg`
-    : `${output.filenamePrefix ?? ''}example${output.filenameSuffix ?? ''}.jpg`
+  // 'original' resolves per file, so name the placeholder rather than guessing.
+  const previewExt = output.format === 'original' ? '원본' : getExtension(output.format)
+  const previewName = renaming
+    ? `${(output.filenameBase ?? '').trim()}_${'1'.padStart(Math.max(1, output.numberPadding ?? 3), '0')}`
+    : `${output.filenamePrefix ?? ''}example${output.filenameSuffix ?? ''}`
+  const filenamePreview = `${previewName}.${previewExt}`
 
   return (
     <div className="settings">

@@ -5,6 +5,8 @@ export interface ImageFileInfo {
   width: number
   height: number
   format: string
+  /** Small preview as a data URI; absent when it could not be rendered. */
+  thumbnail?: string
 }
 
 export interface ResizeOptions {
@@ -79,6 +81,14 @@ export interface ElectronAPI {
   /** Extensions this build of Sharp can actually decode, without the leading dot. */
   getSupportedExtensions: () => Promise<string[]>
   directoryExists: (dir: string) => Promise<boolean>
+  /** Folder picker; returns the chosen directories. */
+  selectDirectory: () => Promise<string[]>
+  /** Walks any directories and keeps only files this build can decode. */
+  expandPaths: (paths: string[]) => Promise<string[]>
+  /** Opens a file or folder in the OS. Resolves to '' on success, a message on failure. */
+  openPath: (target: string) => Promise<string>
+  showItemInFolder: (target: string) => Promise<void>
+  showError: (title: string, message: string) => Promise<void>
   /** Stops the running batch at the next file boundary. */
   cancelProcessing: () => Promise<void>
   getPathForFile: (file: File) => string

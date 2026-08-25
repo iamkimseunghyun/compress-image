@@ -33,7 +33,8 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 - `electron/windowState.ts` — persists window size/position/maximised state under `app.getPath('userData')`; drops a restored position that no longer overlaps a connected display
 - `electron/ipcValidation.ts` — parses/clamps the `process-images` payload before the main process acts on it. Throws where there is no safe default (missing or relative output directory), clamps everything else. Pure and unit-tested
 - `electron/fileScan.ts` — walks dropped or picked directories into a flat, stably-ordered list of decodable files. Pure-ish and unit-tested
-- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages, settings persistence), unit-tested
+- `src/utils/` — shared renderer helpers (size/duration formatting, IPC error messages, settings persistence, output-size projection), unit-tested
+- `src/hooks/useOutputEstimate.ts` — debounced size estimate; supersedes stale responses by sequence number and re-runs only when a size-affecting setting changes
 - `src/` — React renderer (Vite-bundled): App state manages file list, settings, processing lifecycle
 
 **IPC channels**: `select-files`, `select-directory`, `expand-paths`, `select-output-dir`, `get-image-info`, `get-supported-extensions`, `directory-exists`, `open-path`, `show-item-in-folder`, `show-error`, `process-images`, `cancel-processing`, `process-progress` (main→renderer)
@@ -41,6 +42,8 @@ App icons live in `build/` (`icon.png`/`icon.icns`/`icon.ico`, source `icon.svg`
 Dropped paths go straight to `expand-paths`: only the main process can tell a folder from a file or walk it, so the renderer does no extension filtering of its own.
 
 Resize/output settings persist to `localStorage` via `src/utils/settingsStore.ts`. Stored values are treated as untrusted and coerced back into range on load, so settings written by an older build (or edited by hand) degrade to defaults instead of reaching Sharp as invalid options. A restored output folder is re-checked via `directory-exists` and cleared if it has gone.
+
+**Output size estimate** — `estimate-sizes` encodes a few representative files to memory (never to disk) through `buildPipeline`, the same function the real run uses; a separate copy of that logic would drift out of agreement the first time either side changed. The projection is driven by **output pixels, not input bytes**, with bytes-per-pixel pooled per source format. That matters: scaling a batch by an input-byte ratio was off by −62% on a mixed batch, because a 4032px photo and a 640px one both land at 1280px while their inputs differ 30x, and PNG and JPEG bytes-per-pixel are nothing alike. Measured error after the change was +1.3% / −10.3% / −10.9% / +0.3% across four scenarios on a deliberately harsh batch. Samples are stratified by source format for the same reason. Keep the UI wording hedged (`약`, `표본 N개 기준`) — it is a projection, not a measurement.
 
 Batches are cancellable: `processImages` takes a `shouldCancel` predicate checked before each file is claimed, so the in-flight encode finishes and no new work starts. It also fires when the window closes mid-batch. A cancelled run returns only the results it completed, and the renderer marks both panels `inert` while a batch is in flight because the batch runs off a snapshot taken at start.
 

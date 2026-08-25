@@ -97,6 +97,15 @@ export interface ElectronAPI {
     resize: ResizeOptions,
     output: OutputOptions,
   ) => Promise<ProcessingResult[]>
+  /**
+   * Encodes the given files in memory at the current settings and returns each
+   * resulting byte count (null where the file could not be encoded).
+   */
+  estimateSizes: (
+    files: string[],
+    resize: ResizeOptions,
+    output: OutputOptions,
+  ) => Promise<(number | null)[]>
   onProgress: (callback: (progress: ProcessingProgress) => void) => () => void
 }
 

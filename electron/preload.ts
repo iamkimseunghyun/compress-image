@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('api', {
   cancelProcessing: () => ipcRenderer.invoke('cancel-processing'),
   processImages: (files: string[], resize: ResizeOptions, output: OutputOptions) =>
     ipcRenderer.invoke('process-images', { files, resize, output }),
+  estimateSizes: (files: string[], resize: ResizeOptions, output: OutputOptions) =>
+    ipcRenderer.invoke('estimate-sizes', { files, resize, output }),
   onProgress: (callback: (progress: ProcessingProgress) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: ProcessingProgress) =>
       callback(progress)
